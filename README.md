@@ -1,6 +1,20 @@
-# webclaw
+<p align="center">
+  <a href="https://webclaw.io">
+    <img src=".github/banner.png" alt="webclaw" width="600" />
+  </a>
+</p>
 
-Python SDK for the [Webclaw](https://webclaw.io) web extraction API.
+<p align="center">
+  <strong>Python SDK for the Webclaw web extraction API</strong>
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/webclaw"><img src="https://img.shields.io/pypi/v/webclaw?style=flat-square&color=212529" alt="PyPI" /></a>
+  <a href="https://pypi.org/project/webclaw"><img src="https://img.shields.io/pypi/pyversions/webclaw?style=flat-square&color=212529" alt="Python" /></a>
+  <a href="https://github.com/0xMassi/webclaw-python/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-212529?style=flat-square" alt="License" /></a>
+</p>
+
+---
 
 ## Installation
 
@@ -15,12 +29,11 @@ from webclaw import Webclaw
 
 client = Webclaw("wc_your_api_key")
 
-# Scrape a page
 result = client.scrape("https://example.com", formats=["markdown"])
 print(result.markdown)
 ```
 
-## Async Support
+### Async
 
 ```python
 from webclaw import AsyncWebclaw
@@ -30,7 +43,7 @@ async with AsyncWebclaw("wc_your_api_key") as client:
     print(result.markdown)
 ```
 
-## API Reference
+## Endpoints
 
 ### Scrape
 
@@ -45,33 +58,30 @@ result = client.scrape(
     only_main_content=True,
     no_cache=True,
 )
-print(result.url)       # str
-print(result.markdown)  # str | None
-print(result.text)      # str | None
-print(result.llm)       # str | None
-print(result.metadata)  # dict
-print(result.cache)     # CacheInfo | None
+
+result.url        # str
+result.markdown   # str | None
+result.text       # str | None
+result.llm        # str | None
+result.metadata   # dict
+result.cache      # CacheInfo | None
 ```
 
 ### Crawl
 
-Start an async crawl job that follows links from a seed URL.
+Start an async crawl that follows links from a seed URL.
 
 ```python
-job = client.crawl(
-    "https://example.com",
-    max_depth=3,
-    max_pages=100,
-    use_sitemap=True,
-)
+job = client.crawl("https://example.com", max_depth=3, max_pages=100, use_sitemap=True)
 
 # Poll until complete
 status = job.wait(interval=2.0, timeout=300.0)
+
 for page in status.pages:
     print(page.url, len(page.markdown or ""))
 ```
 
-Async crawl:
+Async variant:
 
 ```python
 job = await client.crawl("https://example.com")
@@ -80,11 +90,10 @@ status = await job.wait()
 
 ### Map
 
-Discover URLs via sitemap parsing.
+Discover URLs via sitemap.
 
 ```python
 result = client.map("https://example.com")
-print(result.count)
 for url in result.urls:
     print(url)
 ```
@@ -111,21 +120,14 @@ LLM-powered structured data extraction.
 # Schema-based
 result = client.extract(
     "https://example.com/pricing",
-    schema={
-        "type": "object",
-        "properties": {
-            "plans": {"type": "array", "items": {"type": "object"}}
-        }
-    },
+    schema={"type": "object", "properties": {"plans": {"type": "array"}}},
 )
-print(result.data)
 
 # Prompt-based
 result = client.extract(
     "https://example.com",
     prompt="Extract all pricing tiers with names and prices",
 )
-print(result.data)
 ```
 
 ### Summarize
@@ -148,17 +150,15 @@ print(result.data)
 
 ```python
 from webclaw.errors import (
-    WebclawError,         # Base error
+    WebclawError,         # Base
     AuthenticationError,  # 401/403
     NotFoundError,        # 404
     RateLimitError,       # 429
-    TimeoutError,         # Request timeout
+    TimeoutError,         # Timeout
 )
 
 try:
     result = client.scrape("https://example.com")
-except AuthenticationError:
-    print("Invalid API key")
 except RateLimitError:
     print("Too many requests")
 except WebclawError as e:
@@ -174,7 +174,7 @@ client = Webclaw(
     timeout=60.0,                        # seconds, default 30
 )
 
-# Context manager for automatic cleanup
+# Context manager
 with Webclaw("wc_your_api_key") as client:
     result = client.scrape("https://example.com")
 ```
@@ -182,7 +182,7 @@ with Webclaw("wc_your_api_key") as client:
 ## Requirements
 
 - Python 3.9+
-- httpx
+- [httpx](https://www.python-httpx.org/)
 
 ## License
 
