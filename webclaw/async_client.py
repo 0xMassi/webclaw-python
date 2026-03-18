@@ -162,6 +162,15 @@ class AsyncWebclaw:
         data = await self._request("POST", "/v1/brand", json={"url": url})
         return BrandResponse(data=data)
 
+    async def search(self, query: str, **kwargs: Any) -> dict:
+        return await self._request("POST", "/v1/search", json={"query": query, **kwargs})
+
+    async def diff(self, url: str, **kwargs: Any) -> dict:
+        return await self._request("POST", "/v1/diff", json={"url": url, **kwargs})
+
+    async def agent_scrape(self, url: str, goal: str, **kwargs: Any) -> dict:
+        return await self._request("POST", "/v1/agent-scrape", json={"url": url, "goal": goal, **kwargs})
+
 
 class AsyncCrawlJobHandle:
     """Wraps a running crawl job with async polling helpers."""

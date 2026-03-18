@@ -165,6 +165,15 @@ class Webclaw:
         data = self._request("POST", "/v1/brand", json={"url": url})
         return BrandResponse(data=data)
 
+    def search(self, query: str, **kwargs: Any) -> dict:
+        return self._request("POST", "/v1/search", json={"query": query, **kwargs})
+
+    def diff(self, url: str, **kwargs: Any) -> dict:
+        return self._request("POST", "/v1/diff", json={"url": url, **kwargs})
+
+    def agent_scrape(self, url: str, goal: str, **kwargs: Any) -> dict:
+        return self._request("POST", "/v1/agent-scrape", json={"url": url, "goal": goal, **kwargs})
+
 
 class CrawlJobHandle:
     """Wraps a running crawl job with polling helpers."""
