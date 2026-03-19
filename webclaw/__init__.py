@@ -10,6 +10,7 @@ from .errors import (
     WebclawError,
 )
 from .types import (
+    AgentScrapeResponse,
     BatchResponse,
     BatchResult,
     BrandResponse,
@@ -17,9 +18,16 @@ from .types import (
     CrawlJob,
     CrawlPage,
     CrawlStatus,
+    DiffResponse,
     ExtractResponse,
     MapResponse,
+    ResearchFinding,
+    ResearchSource,
+    ResearchStartResponse,
+    ResearchStatusResponse,
     ScrapeResponse,
+    SearchResponse,
+    SearchResult,
     SummarizeResponse,
 )
 
@@ -30,6 +38,7 @@ __all__ = [
     "CrawlJobHandle",
     "AsyncCrawlJobHandle",
     # types
+    "AgentScrapeResponse",
     "BatchResponse",
     "BatchResult",
     "BrandResponse",
@@ -37,9 +46,16 @@ __all__ = [
     "CrawlJob",
     "CrawlPage",
     "CrawlStatus",
+    "DiffResponse",
     "ExtractResponse",
     "MapResponse",
+    "ResearchFinding",
+    "ResearchSource",
+    "ResearchStartResponse",
+    "ResearchStatusResponse",
     "ScrapeResponse",
+    "SearchResponse",
+    "SearchResult",
     "SummarizeResponse",
     # errors
     "WebclawError",

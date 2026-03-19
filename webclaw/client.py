@@ -24,6 +24,8 @@ from .types import (
     CrawlStatus,
     ExtractResponse,
     MapResponse,
+    ResearchStartResponse,
+    ResearchStatusResponse,
     ScrapeResponse,
     SummarizeResponse,
 )
@@ -42,7 +44,6 @@ class Webclaw:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
-        self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self._client = httpx.Client(
             base_url=self.base_url,
@@ -166,13 +167,35 @@ class Webclaw:
         return BrandResponse(data=data)
 
     def search(self, query: str, **kwargs: Any) -> dict:
+        """Run a web search query via the Serper-backed search endpoint."""
         return self._request("POST", "/v1/search", json={"query": query, **kwargs})
 
     def diff(self, url: str, **kwargs: Any) -> dict:
+        """Detect content changes at a URL since the last check."""
         return self._request("POST", "/v1/diff", json={"url": url, **kwargs})
 
     def agent_scrape(self, url: str, goal: str, **kwargs: Any) -> dict:
+        """AI-guided scraping that navigates a page to achieve a goal."""
         return self._request("POST", "/v1/agent-scrape", json={"url": url, "goal": goal, **kwargs})
+
+    def research(self, query: str, **kwargs: Any) -> ResearchStartResponse:
+        """Start an async research job. Returns job ID for polling."""
+        data = self._request("POST", "/v1/research", json={"query": query, **kwargs})
+        return ResearchStartResponse(id=data.get("id", ""), status=data.get("status", ""))
+
+    def get_research_status(self, job_id: str) -> ResearchStatusResponse:
+        """Get status/results of a research job."""
+        data = self._request("GET", f"/v1/research/{job_id}")
+        return ResearchStatusResponse(
+            id=data.get("id", ""),
+            status=data.get("status", ""),
+            query=data.get("query", ""),
+            report=data.get("report", ""),
+            sources=data.get("sources", []),
+            findings=data.get("findings", []),
+            iterations=data.get("iterations", 0),
+            elapsed_ms=data.get("elapsed_ms", 0),
+        )
 
 
 class CrawlJobHandle:
@@ -212,7 +235,7 @@ def _raise_for_status(response: httpx.Response) -> None:
         return
     try:
         detail = response.json().get("error", response.text)
-    except Exception:
+    except (ValueError, KeyError):
         detail = response.text
 
     if response.status_code in (401, 403):
