@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 # -- Scrape ------------------------------------------------------------------
@@ -16,13 +16,13 @@ class CacheInfo:
 @dataclass
 class ScrapeResponse:
     url: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    markdown: Optional[str] = None
-    text: Optional[str] = None
-    llm: Optional[str] = None
-    json_data: Optional[Any] = None
-    cache: Optional[CacheInfo] = None
-    warning: Optional[str] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    markdown: str | None = None
+    text: str | None = None
+    llm: str | None = None
+    json_data: Any | None = None
+    cache: CacheInfo | None = None
+    warning: str | None = None
 
 
 # -- Crawl -------------------------------------------------------------------
@@ -30,9 +30,9 @@ class ScrapeResponse:
 @dataclass
 class CrawlPage:
     url: str
-    markdown: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    error: Optional[str] = None
+    markdown: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
 
 
 @dataclass
@@ -47,7 +47,7 @@ class CrawlStatus:
     """Full crawl status including page results."""
     id: str
     status: str  # "running" | "completed" | "failed"
-    pages: List[CrawlPage] = field(default_factory=list)
+    pages: list[CrawlPage] = field(default_factory=list)
     total: int = 0
     completed: int = 0
     errors: int = 0
@@ -57,7 +57,7 @@ class CrawlStatus:
 
 @dataclass
 class MapResponse:
-    urls: List[str] = field(default_factory=list)
+    urls: list[str] = field(default_factory=list)
     count: int = 0
 
 
@@ -66,14 +66,14 @@ class MapResponse:
 @dataclass
 class BatchResult:
     url: str
-    markdown: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    error: Optional[str] = None
+    markdown: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
 
 
 @dataclass
 class BatchResponse:
-    results: List[BatchResult] = field(default_factory=list)
+    results: list[BatchResult] = field(default_factory=list)
 
 
 # -- Extract -----------------------------------------------------------------
@@ -95,7 +95,7 @@ class SummarizeResponse:
 @dataclass
 class BrandResponse:
     """Brand identity -- structure depends on the API, so we store raw data."""
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
 
 
 # -- Search ------------------------------------------------------------------
@@ -109,7 +109,7 @@ class SearchResult:
 
 @dataclass
 class SearchResponse:
-    results: List[SearchResult] = field(default_factory=list)
+    results: list[SearchResult] = field(default_factory=list)
     query: str = ""
 
 
@@ -130,7 +130,7 @@ class DiffResponse:
 class AgentScrapeResponse:
     url: str = ""
     result: str = ""
-    steps: List[str] = field(default_factory=list)
+    steps: list[str] = field(default_factory=list)
 
 
 # -- Research ----------------------------------------------------------------
@@ -161,8 +161,8 @@ class ResearchStatusResponse:
     status: str = ""
     query: str = ""
     report: str = ""
-    sources: List[Dict[str, Any]] = field(default_factory=list)
-    findings: List[Dict[str, Any]] = field(default_factory=list)
+    sources: list[dict[str, Any]] = field(default_factory=list)
+    findings: list[dict[str, Any]] = field(default_factory=list)
     iterations: int = 0
     elapsed_ms: int = 0
 
@@ -174,15 +174,15 @@ class WatchEntry:
     """A single watch monitor."""
     id: str = ""
     url: str = ""
-    name: Optional[str] = None
+    name: str | None = None
     interval_minutes: int = 1440
-    webhook_url: Optional[str] = None
+    webhook_url: str | None = None
     status: str = ""
-    last_checked: Optional[str] = None
+    last_checked: str | None = None
     created_at: str = ""
 
     @staticmethod
-    def from_dict(data: Dict[str, Any]) -> "WatchEntry":
+    def from_dict(data: dict[str, Any]) -> WatchEntry:
         return WatchEntry(
             id=data.get("id", ""),
             url=data.get("url", ""),
@@ -197,7 +197,7 @@ class WatchEntry:
 
 @dataclass
 class WatchListResponse:
-    watches: List[WatchEntry] = field(default_factory=list)
+    watches: list[WatchEntry] = field(default_factory=list)
     total: int = 0
 
 
@@ -206,5 +206,5 @@ class WatchCheckResponse:
     """Result of a manual watch check."""
     id: str = ""
     has_changed: bool = False
-    diff: Optional[str] = None
+    diff: str | None = None
     checked_at: str = ""
