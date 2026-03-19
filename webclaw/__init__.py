@@ -29,6 +29,9 @@ from .types import (
     SearchResponse,
     SearchResult,
     SummarizeResponse,
+    WatchCheckResponse,
+    WatchEntry,
+    WatchListResponse,
 )
 
 __all__ = [
@@ -57,6 +60,9 @@ __all__ = [
     "SearchResponse",
     "SearchResult",
     "SummarizeResponse",
+    "WatchCheckResponse",
+    "WatchEntry",
+    "WatchListResponse",
     # errors
     "WebclawError",
     "AuthenticationError",

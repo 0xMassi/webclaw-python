@@ -165,3 +165,46 @@ class ResearchStatusResponse:
     findings: List[Dict[str, Any]] = field(default_factory=list)
     iterations: int = 0
     elapsed_ms: int = 0
+
+
+# -- Watch -------------------------------------------------------------------
+
+@dataclass
+class WatchEntry:
+    """A single watch monitor."""
+    id: str = ""
+    url: str = ""
+    name: Optional[str] = None
+    interval_minutes: int = 1440
+    webhook_url: Optional[str] = None
+    status: str = ""
+    last_checked: Optional[str] = None
+    created_at: str = ""
+
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> "WatchEntry":
+        return WatchEntry(
+            id=data.get("id", ""),
+            url=data.get("url", ""),
+            name=data.get("name"),
+            interval_minutes=data.get("interval_minutes", 1440),
+            webhook_url=data.get("webhook_url"),
+            status=data.get("status", ""),
+            last_checked=data.get("last_checked"),
+            created_at=data.get("created_at", ""),
+        )
+
+
+@dataclass
+class WatchListResponse:
+    watches: List[WatchEntry] = field(default_factory=list)
+    total: int = 0
+
+
+@dataclass
+class WatchCheckResponse:
+    """Result of a manual watch check."""
+    id: str = ""
+    has_changed: bool = False
+    diff: Optional[str] = None
+    checked_at: str = ""

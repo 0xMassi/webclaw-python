@@ -28,6 +28,9 @@ from .types import (
     ResearchStatusResponse,
     ScrapeResponse,
     SummarizeResponse,
+    WatchCheckResponse,
+    WatchEntry,
+    WatchListResponse,
 )
 
 DEFAULT_BASE_URL = "https://api.webclaw.io"
@@ -166,9 +169,20 @@ class Webclaw:
         data = self._request("POST", "/v1/brand", json={"url": url})
         return BrandResponse(data=data)
 
-    def search(self, query: str, **kwargs: Any) -> dict:
+    def search(
+        self,
+        query: str,
+        *,
+        num_results: Optional[int] = None,
+        topic: Optional[str] = None,
+    ) -> dict:
         """Run a web search query via the Serper-backed search endpoint."""
-        return self._request("POST", "/v1/search", json={"query": query, **kwargs})
+        body: Dict[str, Any] = {"query": query}
+        if num_results is not None:
+            body["num_results"] = num_results
+        if topic is not None:
+            body["topic"] = topic
+        return self._request("POST", "/v1/search", json=body)
 
     def diff(self, url: str, **kwargs: Any) -> dict:
         """Detect content changes at a URL since the last check."""
@@ -178,23 +192,101 @@ class Webclaw:
         """AI-guided scraping that navigates a page to achieve a goal."""
         return self._request("POST", "/v1/agent-scrape", json={"url": url, "goal": goal, **kwargs})
 
-    def research(self, query: str, **kwargs: Any) -> ResearchStartResponse:
-        """Start an async research job. Returns job ID for polling."""
-        data = self._request("POST", "/v1/research", json={"query": query, **kwargs})
-        return ResearchStartResponse(id=data.get("id", ""), status=data.get("status", ""))
+    def research(
+        self,
+        query: str,
+        *,
+        deep: bool = False,
+        max_sources: Optional[int] = None,
+        max_iterations: Optional[int] = None,
+        topic: Optional[str] = None,
+    ) -> ResearchStatusResponse:
+        """Start a research job and poll until it completes.
+
+        Blocks until the server finishes research. Normal queries time out
+        after 600s, deep research after 1200s.
+        """
+        body: Dict[str, Any] = {"query": query, "deep": deep}
+        if max_sources is not None:
+            body["max_sources"] = max_sources
+        if max_iterations is not None:
+            body["max_iterations"] = max_iterations
+        if topic is not None:
+            body["topic"] = topic
+
+        data = self._request("POST", "/v1/research", json=body)
+        job_id = data["id"]
+        poll_timeout = 1200.0 if deep else 600.0
+        deadline = time.monotonic() + poll_timeout
+
+        while True:
+            result = self._request("GET", f"/v1/research/{job_id}")
+            status = result.get("status", "")
+            if status == "completed":
+                return _parse_research(result)
+            if status == "failed":
+                raise WebclawError(
+                    result.get("error", "Research job failed"),
+                    status_code=None,
+                )
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Research {job_id} did not complete within {poll_timeout}s"
+                )
+            time.sleep(2.0)
 
     def get_research_status(self, job_id: str) -> ResearchStatusResponse:
         """Get status/results of a research job."""
         data = self._request("GET", f"/v1/research/{job_id}")
-        return ResearchStatusResponse(
+        return _parse_research(data)
+
+    # -- watch endpoints ------------------------------------------------------
+
+    def watch_create(
+        self,
+        url: str,
+        *,
+        name: Optional[str] = None,
+        interval_minutes: int = 1440,
+        webhook_url: Optional[str] = None,
+    ) -> WatchEntry:
+        """Create a new watch monitor for a URL."""
+        body: Dict[str, Any] = {"url": url, "interval_minutes": interval_minutes}
+        if name is not None:
+            body["name"] = name
+        if webhook_url is not None:
+            body["webhook_url"] = webhook_url
+        data = self._request("POST", "/v1/watch", json=body)
+        return WatchEntry.from_dict(data)
+
+    def watch_list(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> WatchListResponse:
+        """List all watch monitors."""
+        data = self._request("GET", "/v1/watch", params={"limit": limit, "offset": offset})
+        watches = [WatchEntry.from_dict(w) for w in data.get("watches", [])]
+        return WatchListResponse(watches=watches, total=data.get("total", len(watches)))
+
+    def watch_get(self, watch_id: str) -> WatchEntry:
+        """Get a single watch monitor by ID."""
+        data = self._request("GET", f"/v1/watch/{watch_id}")
+        return WatchEntry.from_dict(data)
+
+    def watch_delete(self, watch_id: str) -> None:
+        """Delete a watch monitor."""
+        self._request("DELETE", f"/v1/watch/{watch_id}")
+
+    def watch_check(self, watch_id: str) -> WatchCheckResponse:
+        """Trigger an immediate check for a watch monitor."""
+        data = self._request("POST", f"/v1/watch/{watch_id}/check")
+        return WatchCheckResponse(
             id=data.get("id", ""),
-            status=data.get("status", ""),
-            query=data.get("query", ""),
-            report=data.get("report", ""),
-            sources=data.get("sources", []),
-            findings=data.get("findings", []),
-            iterations=data.get("iterations", 0),
-            elapsed_ms=data.get("elapsed_ms", 0),
+            has_changed=data.get("has_changed", False),
+            diff=data.get("diff"),
+            checked_at=data.get("checked_at", ""),
         )
 
 
@@ -294,3 +386,16 @@ def _parse_batch(data: Dict[str, Any]) -> BatchResponse:
         for r in data.get("results", [])
     ]
     return BatchResponse(results=results)
+
+
+def _parse_research(data: Dict[str, Any]) -> ResearchStatusResponse:
+    return ResearchStatusResponse(
+        id=data.get("id", ""),
+        status=data.get("status", ""),
+        query=data.get("query", ""),
+        report=data.get("report", ""),
+        sources=data.get("sources", []),
+        findings=data.get("findings", []),
+        iterations=data.get("iterations", 0),
+        elapsed_ms=data.get("elapsed_ms", 0),
+    )
