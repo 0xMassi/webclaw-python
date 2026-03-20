@@ -146,6 +146,30 @@ result = client.brand("https://example.com")
 print(result.data)
 ```
 
+### Search
+
+Web search with optional scraping of results.
+
+```python
+results = client.search("web scraping tools 2026")
+for r in results["results"]:
+    print(r["title"], r["url"])
+```
+
+### Research
+
+Start an async deep research job and poll for results.
+
+```python
+# Start a research job
+result = client.research("How do modern web crawlers handle JS rendering?", max_sources=15, deep=True)
+print(result.id, result.status)
+
+# Poll for results
+status = client.get_research_status(result.id)
+print(status.report)
+```
+
 ## Error Handling
 
 ```python
