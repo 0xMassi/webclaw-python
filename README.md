@@ -35,7 +35,7 @@ Requires Python 3.9+. The only dependency is [httpx](https://www.python-httpx.or
 ```python
 from webclaw import Webclaw
 
-client = Webclaw("fc-YOUR_API_KEY")
+client = Webclaw("wc-YOUR_API_KEY")
 
 result = client.scrape("https://example.com", formats=["markdown"])
 print(result.markdown)
@@ -46,7 +46,7 @@ print(result.markdown)
 ```python
 from webclaw import AsyncWebclaw
 
-async with AsyncWebclaw("fc-YOUR_API_KEY") as client:
+async with AsyncWebclaw("wc-YOUR_API_KEY") as client:
     result = await client.scrape("https://example.com", formats=["markdown"])
     print(result.markdown)
 ```
@@ -363,11 +363,11 @@ Both `Webclaw` and `AsyncWebclaw` support context managers for automatic cleanup
 
 ```python
 # Sync
-with Webclaw("fc-YOUR_API_KEY") as client:
+with Webclaw("wc-YOUR_API_KEY") as client:
     result = client.scrape("https://example.com")
 
 # Async
-async with AsyncWebclaw("fc-YOUR_API_KEY") as client:
+async with AsyncWebclaw("wc-YOUR_API_KEY") as client:
     result = await client.scrape("https://example.com")
 ```
 
@@ -380,7 +380,7 @@ import asyncio
 from webclaw import AsyncWebclaw
 
 async def main():
-    async with AsyncWebclaw("fc-YOUR_API_KEY") as client:
+    async with AsyncWebclaw("wc-YOUR_API_KEY") as client:
         # Run multiple scrapes concurrently
         results = await asyncio.gather(
             client.scrape("https://a.com", formats=["markdown"]),
