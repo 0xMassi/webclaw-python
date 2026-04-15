@@ -124,15 +124,6 @@ class DiffResponse:
     current_hash: str = ""
 
 
-# -- Agent Scrape ------------------------------------------------------------
-
-@dataclass
-class AgentScrapeResponse:
-    url: str = ""
-    result: str = ""
-    steps: list[str] = field(default_factory=list)
-
-
 # -- Research ----------------------------------------------------------------
 
 @dataclass

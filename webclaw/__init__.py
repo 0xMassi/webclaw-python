@@ -10,7 +10,6 @@ from .errors import (
     WebclawError,
 )
 from .types import (
-    AgentScrapeResponse,
     BatchResponse,
     BatchResult,
     BrandResponse,
@@ -41,7 +40,6 @@ __all__ = [
     "CrawlJobHandle",
     "AsyncCrawlJobHandle",
     # types
-    "AgentScrapeResponse",
     "BatchResponse",
     "BatchResult",
     "BrandResponse",

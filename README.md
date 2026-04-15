@@ -184,22 +184,6 @@ result = client.brand("https://example.com")
 print(result.data)  # dict with brand identity fields
 ```
 
-### Agent Scrape
-
-AI-guided scraping that navigates a page to achieve a specified goal.
-
-```python
-result = client.agent_scrape(
-    "https://example.com/dashboard",
-    goal="Find the monthly active users count",
-)
-
-print(result["result"])
-print(result["steps"])
-```
-
-**Parameters:** `url` (str), `goal` (str), plus optional keyword arguments forwarded to the API.
-
 ### Research
 
 Deep research that searches, reads, and synthesizes information from multiple sources. This is an async job: the SDK starts it and polls until completion.

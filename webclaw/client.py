@@ -116,10 +116,6 @@ class Webclaw:
         """Detect content changes at a URL since the last check."""
         return self._request("POST", "/v1/diff", json={"url": url, **kwargs})
 
-    def agent_scrape(self, url: str, goal: str, **kwargs: Any) -> dict:
-        """AI-guided scraping that navigates a page to achieve a goal."""
-        return self._request("POST", "/v1/agent-scrape", json={"url": url, "goal": goal, **kwargs})
-
     def research(
         self, query: str, *, deep: bool = False,
         max_sources: int | None = None, max_iterations: int | None = None, topic: str | None = None,
