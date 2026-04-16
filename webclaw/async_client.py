@@ -140,6 +140,40 @@ class AsyncWebclaw:
         """Get status/results of a research job without polling."""
         return ep.parse_research(await self._request("GET", f"/v1/research/{job_id}"))
 
+    async def wait_for_research(
+        self, job_id: str, *, interval: float = 2.0, timeout: float = 1200.0,
+    ) -> ResearchStatusResponse:
+        """Poll an existing research job by id until it completes or fails.
+
+        Async mirror of ``Webclaw.wait_for_research`` / sdk-js ``waitForResearch`` /
+        sdk-go ``WaitForResearch``. Useful when the job id was persisted from
+        a prior ``research()`` call and you want to block-until-done without
+        restarting the job.
+        """
+        return await _async_poll_until_done(
+            fetcher=lambda: self._request("GET", f"/v1/research/{job_id}"),
+            parser=ep.parse_research,
+            label=f"Research {job_id}",
+            interval=interval,
+            timeout=timeout,
+        )
+
+    async def wait_for_crawl(
+        self, job_id: str, *, interval: float = 2.0, timeout: float = 300.0,
+    ) -> CrawlStatus:
+        """Poll an existing crawl job by id until it completes or fails.
+
+        Async mirror of ``Webclaw.wait_for_crawl`` / sdk-go ``WaitForCompletion``.
+        """
+        return await _async_poll_until_done(
+            fetcher=lambda: self.get_crawl_status(job_id),
+            parser=lambda s: s,
+            label=f"Crawl {job_id}",
+            interval=interval,
+            timeout=timeout,
+            status_attr="status",
+        )
+
     # -- watch endpoints ------------------------------------------------------
 
     async def watch_create(

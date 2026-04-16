@@ -138,6 +138,44 @@ class Webclaw:
         """Get status/results of a research job without polling."""
         return ep.parse_research(self._request("GET", f"/v1/research/{job_id}"))
 
+    def wait_for_research(
+        self, job_id: str, *, interval: float = 2.0, timeout: float = 1200.0,
+    ) -> ResearchStatusResponse:
+        """Poll an existing research job by id until it completes or fails.
+
+        Mirrors sdk-go's ``WaitForResearch`` and sdk-js's ``waitForResearch``.
+        Useful when the job id was persisted from a prior ``research()`` call
+        in another process and you want to block-until-done without
+        restarting the job.
+
+        Default timeout is 1200s (20 min), matching the deep-research window
+        on the server side. Override for shorter waits.
+        """
+        return _poll_until_done(
+            fetcher=lambda: self._request("GET", f"/v1/research/{job_id}"),
+            parser=ep.parse_research,
+            label=f"Research {job_id}",
+            interval=interval,
+            timeout=timeout,
+        )
+
+    def wait_for_crawl(
+        self, job_id: str, *, interval: float = 2.0, timeout: float = 300.0,
+    ) -> CrawlStatus:
+        """Poll an existing crawl job by id until it completes or fails.
+
+        Same semantics as ``CrawlJobHandle.wait`` but for callers who only
+        have the id. Mirrors sdk-go's ``WaitForCompletion``.
+        """
+        return _poll_until_done(
+            fetcher=lambda: self.get_crawl_status(job_id),
+            parser=lambda s: s,
+            label=f"Crawl {job_id}",
+            interval=interval,
+            timeout=timeout,
+            status_attr="status",
+        )
+
     # -- watch endpoints ------------------------------------------------------
 
     def watch_create(
