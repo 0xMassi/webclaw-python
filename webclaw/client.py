@@ -112,6 +112,39 @@ class Webclaw:
         """Run a web search query via the Serper-backed search endpoint."""
         return self._request("POST", "/v1/search", json=ep.build_search_body(query, num_results=num_results, topic=topic))
 
+    def list_extractors(self) -> dict:
+        """List all vertical extractors available on the server.
+
+        Returns the catalog as ``{"extractors": [{name, label, description, url_patterns}, ...]}``.
+        Use the ``name`` values with :meth:`scrape_vertical` to run a specific parser.
+        """
+        return self._request("GET", "/v1/extractors")
+
+    def scrape_vertical(self, name: str, url: str) -> dict:
+        """Run a vertical extractor by name and return typed JSON.
+
+        Verticals return site-specific structured fields (title, price,
+        rating, author, etc.) rather than generic markdown. Call
+        :meth:`list_extractors` to see the full catalog of 28 extractors.
+
+        :param name: Vertical extractor name, e.g. ``"reddit"``,
+            ``"github_repo"``, ``"trustpilot_reviews"``, ``"youtube_video"``,
+            ``"shopify_product"``.
+        :param url: URL to extract. Must match the URL patterns the
+            extractor claims; the server returns 400 on mismatch.
+        :returns: ``{"vertical": str, "url": str, "data": dict}``. The
+            ``data`` shape is extractor-specific; the caller should know
+            which vertical they invoked and cast accordingly.
+        """
+        if not name:
+            raise ValueError("name is required")
+        if not url:
+            raise ValueError("url is required")
+        # URL-encode the vertical name to be safe against typo'd input,
+        # even though legitimate names are always [a-z_].
+        from urllib.parse import quote
+        return self._request("POST", f"/v1/scrape/{quote(name, safe='')}", json={"url": url})
+
     def diff(self, url: str, **kwargs: Any) -> dict:
         """Detect content changes at a URL since the last check."""
         return self._request("POST", "/v1/diff", json={"url": url, **kwargs})

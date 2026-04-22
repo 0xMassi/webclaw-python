@@ -114,6 +114,28 @@ class AsyncWebclaw:
         """Run a web search query via the Serper-backed search endpoint."""
         return await self._request("POST", "/v1/search", json=ep.build_search_body(query, num_results=num_results, topic=topic))
 
+    async def list_extractors(self) -> dict:
+        """Async mirror of :meth:`Webclaw.list_extractors`.
+
+        Returns the vertical extractor catalog as
+        ``{"extractors": [{name, label, description, url_patterns}, ...]}``.
+        """
+        return await self._request("GET", "/v1/extractors")
+
+    async def scrape_vertical(self, name: str, url: str) -> dict:
+        """Async mirror of :meth:`Webclaw.scrape_vertical`.
+
+        Runs a specific vertical extractor by name on the given URL.
+        Returns ``{"vertical": str, "url": str, "data": dict}`` where
+        ``data`` is extractor-specific typed JSON.
+        """
+        if not name:
+            raise ValueError("name is required")
+        if not url:
+            raise ValueError("url is required")
+        from urllib.parse import quote
+        return await self._request("POST", f"/v1/scrape/{quote(name, safe='')}", json={"url": url})
+
     async def diff(self, url: str, **kwargs: Any) -> dict:
         """Detect content changes at a URL since the last check."""
         return await self._request("POST", "/v1/diff", json={"url": url, **kwargs})
