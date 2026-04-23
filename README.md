@@ -79,6 +79,33 @@ result.cache      # CacheInfo | None  (.status: "hit" | "miss" | "bypass")
 result.warning    # str | None
 ```
 
+### Vertical extractors
+
+28 site-specific extractors that return typed JSON (GitHub, Reddit, Amazon, YouTube, PyPI, HuggingFace, Trustpilot, etc.) instead of generic markdown. See the [catalog](https://webclaw.io/docs/api/vertical) for the full list.
+
+```python
+# Discover available extractors
+catalog = client.list_extractors()
+for e in catalog["extractors"]:
+    print(e["name"], "-", e["label"])
+
+# Run a specific extractor
+pr = client.scrape_vertical(
+    "github_pr",
+    "https://github.com/rust-lang/rust/pull/123456",
+)
+print(pr["data"])  # {title, state, author, commits, reviews, ...}
+
+# Amazon product as typed JSON
+product = client.scrape_vertical(
+    "amazon_product",
+    "https://www.amazon.com/dp/B0C6KKQ7ND",
+)
+print(product["data"]["price"], product["data"]["rating"])
+```
+
+The `data` field is extractor-specific; call `list_extractors()` to discover what each returns. Both methods have async equivalents on `AsyncWebclaw`.
+
 ### Search
 
 Web search with optional topic filtering.
