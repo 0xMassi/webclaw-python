@@ -14,6 +14,30 @@ class CacheInfo:
 
 
 @dataclass
+class YouTubeData:
+    """Structured YouTube metadata returned by `/v1/scrape` for any
+    `youtube.com/watch`, `youtube.com/shorts`, or `youtu.be/` URL.
+
+    Populated via the server's yt-dlp short-circuit (preferred) or the
+    standard pipeline's vertical YouTube extractor (transcript will be
+    `None` on this fallback path)."""
+    video_id: str | None = None
+    title: str | None = None
+    description: str | None = None
+    channel: str | None = None
+    channel_url: str | None = None
+    uploader: str | None = None
+    upload_date: str | None = None  # YYYYMMDD
+    duration_seconds: int | None = None
+    view_count: int | None = None
+    like_count: int | None = None
+    thumbnail: str | None = None
+    tags: list[str] = field(default_factory=list)
+    categories: list[str] = field(default_factory=list)
+    language: str | None = None
+
+
+@dataclass
 class ScrapeResponse:
     url: str
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -23,6 +47,11 @@ class ScrapeResponse:
     json_data: Any | None = None
     cache: CacheInfo | None = None
     warning: str | None = None
+    # YouTube-only — set when the URL is a YouTube watch/shorts/youtu.be.
+    youtube: YouTubeData | None = None
+    # Auto-caption transcript text (newline-joined). Only present when the
+    # yt-dlp short-circuit fired and the video has captions.
+    transcript: str | None = None
 
 
 # -- Crawl -------------------------------------------------------------------

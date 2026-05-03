@@ -25,6 +25,7 @@ from .types import (
     WatchCheckResponse,
     WatchEntry,
     WatchListResponse,
+    YouTubeData,
 )
 
 DEFAULT_BASE_URL = "https://api.webclaw.io"
@@ -168,6 +169,25 @@ def parse_scrape(data: dict[str, Any]) -> ScrapeResponse:
     cache = None
     if data.get("cache"):
         cache = CacheInfo(status=data["cache"]["status"])
+    youtube = None
+    raw_yt = data.get("youtube")
+    if isinstance(raw_yt, dict):
+        youtube = YouTubeData(
+            video_id=raw_yt.get("video_id"),
+            title=raw_yt.get("title"),
+            description=raw_yt.get("description"),
+            channel=raw_yt.get("channel"),
+            channel_url=raw_yt.get("channel_url"),
+            uploader=raw_yt.get("uploader"),
+            upload_date=raw_yt.get("upload_date"),
+            duration_seconds=raw_yt.get("duration_seconds"),
+            view_count=raw_yt.get("view_count"),
+            like_count=raw_yt.get("like_count"),
+            thumbnail=raw_yt.get("thumbnail"),
+            tags=list(raw_yt.get("tags") or []),
+            categories=list(raw_yt.get("categories") or []),
+            language=raw_yt.get("language"),
+        )
     return ScrapeResponse(
         url=data["url"],
         metadata=data.get("metadata", {}),
@@ -177,6 +197,8 @@ def parse_scrape(data: dict[str, Any]) -> ScrapeResponse:
         json_data=data.get("json"),
         cache=cache,
         warning=data.get("warning"),
+        youtube=youtube,
+        transcript=data.get("transcript"),
     )
 
 

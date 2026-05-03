@@ -31,6 +31,7 @@ from .types import (
     WatchCheckResponse,
     WatchEntry,
     WatchListResponse,
+    YouTubeData,
 )
 
 __all__ = [
@@ -61,6 +62,7 @@ __all__ = [
     "WatchCheckResponse",
     "WatchEntry",
     "WatchListResponse",
+    "YouTubeData",
     # errors
     "WebclawError",
     "AuthenticationError",
