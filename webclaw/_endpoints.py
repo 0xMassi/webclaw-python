@@ -31,8 +31,26 @@ from .types import (
 DEFAULT_BASE_URL = "https://api.webclaw.io"
 DEFAULT_TIMEOUT = 30.0
 
-# Terminal states shared by crawl and research polling.
-TERMINAL_STATES = frozenset({"completed", "failed"})
+# Job lifecycle states shared by crawl and research polling.
+#
+# The server uses a small, fixed status vocabulary:
+#   - crawl jobs:    pending | running | completed | failed | interrupted
+#   - research jobs: processing | completed | failed
+#
+# SUCCESS_STATE is the only state that yields a parsed result. Everything
+# else is either still-in-flight (keep polling) or a terminal failure
+# (fail fast). A status outside *all* of these sets is treated as an
+# unknown terminal state and fails fast too, so an unrecognised
+# server-side status can never spin the poll loop until the wall-clock
+# timeout.
+SUCCESS_STATE = "completed"
+FAILURE_STATES = frozenset({"failed", "interrupted", "error", "cancelled", "canceled"})
+IN_PROGRESS_STATES = frozenset(
+    {"pending", "running", "processing", "queued", "in_progress", "started", ""}
+)
+# Terminal = anything that is not still in progress. Kept as a single
+# name for callers that just need the "is this done" predicate.
+TERMINAL_STATES = frozenset({SUCCESS_STATE}) | FAILURE_STATES
 
 
 # ---------------------------------------------------------------------------
@@ -165,29 +183,34 @@ def build_watch_create_body(
 # Response parsers
 # ---------------------------------------------------------------------------
 
+def _parse_youtube(raw_yt: Any) -> YouTubeData | None:
+    """Build a YouTubeData from the server's `youtube` block, or None when
+    the block is absent / not an object. Shared by scrape and batch."""
+    if not isinstance(raw_yt, dict):
+        return None
+    return YouTubeData(
+        video_id=raw_yt.get("video_id"),
+        title=raw_yt.get("title"),
+        description=raw_yt.get("description"),
+        channel=raw_yt.get("channel"),
+        channel_url=raw_yt.get("channel_url"),
+        uploader=raw_yt.get("uploader"),
+        upload_date=raw_yt.get("upload_date"),
+        duration_seconds=raw_yt.get("duration_seconds"),
+        view_count=raw_yt.get("view_count"),
+        like_count=raw_yt.get("like_count"),
+        thumbnail=raw_yt.get("thumbnail"),
+        tags=list(raw_yt.get("tags") or []),
+        categories=list(raw_yt.get("categories") or []),
+        language=raw_yt.get("language"),
+    )
+
+
 def parse_scrape(data: dict[str, Any]) -> ScrapeResponse:
     cache = None
     if data.get("cache"):
         cache = CacheInfo(status=data["cache"]["status"])
-    youtube = None
-    raw_yt = data.get("youtube")
-    if isinstance(raw_yt, dict):
-        youtube = YouTubeData(
-            video_id=raw_yt.get("video_id"),
-            title=raw_yt.get("title"),
-            description=raw_yt.get("description"),
-            channel=raw_yt.get("channel"),
-            channel_url=raw_yt.get("channel_url"),
-            uploader=raw_yt.get("uploader"),
-            upload_date=raw_yt.get("upload_date"),
-            duration_seconds=raw_yt.get("duration_seconds"),
-            view_count=raw_yt.get("view_count"),
-            like_count=raw_yt.get("like_count"),
-            thumbnail=raw_yt.get("thumbnail"),
-            tags=list(raw_yt.get("tags") or []),
-            categories=list(raw_yt.get("categories") or []),
-            language=raw_yt.get("language"),
-        )
+    youtube = _parse_youtube(data.get("youtube"))
     return ScrapeResponse(
         url=data["url"],
         metadata=data.get("metadata", {}),
@@ -235,8 +258,15 @@ def parse_batch(data: dict[str, Any]) -> BatchResponse:
         BatchResult(
             url=r["url"],
             markdown=r.get("markdown"),
+            text=r.get("text"),
+            llm=r.get("llm"),
+            # The server keys the json/structured payload as "extraction"
+            # in batch entries; accept "json" too for forward-compat.
+            json_data=r.get("json", r.get("extraction")),
             metadata=r.get("metadata", {}),
             error=r.get("error"),
+            youtube=_parse_youtube(r.get("youtube")),
+            transcript=r.get("transcript"),
         )
         for r in data.get("results", [])
     ]
