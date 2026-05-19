@@ -20,9 +20,9 @@ from .client import (
 )
 from .errors import TimeoutError, WebclawError
 from .types import (
-    BatchResponse, BrandResponse, CrawlStatus, ExtractResponse, MapResponse,
-    ResearchStatusResponse, ScrapeResponse, SummarizeResponse,
-    WatchCheckResponse, WatchEntry, WatchListResponse,
+    BatchResponse, BrandResponse, CrawlStatus, EndpointsResponse,
+    ExtractResponse, MapResponse, ResearchStatusResponse, ScrapeResponse,
+    SummarizeResponse, WatchCheckResponse, WatchEntry, WatchListResponse,
 )
 
 
@@ -102,6 +102,24 @@ class AsyncWebclaw:
     async def map(self, url: str) -> MapResponse:
         """Discover URLs from a site's sitemap."""
         return ep.parse_map(await self._request("POST", "/v1/map", json={"url": url}))
+
+    async def endpoints(
+        self,
+        url: str,
+        *,
+        include_third_party: bool = False,
+        max_bundles: int = 20,
+    ) -> EndpointsResponse:
+        """Async mirror of :meth:`Webclaw.endpoints`.
+
+        Discovers API endpoints embedded in a page's inline JS and
+        external script bundles -- the runtime routes a single-page app
+        hits that :meth:`map` (sitemap-based) cannot see.
+        """
+        body = ep.build_endpoints_body(
+            url, include_third_party=include_third_party, max_bundles=max_bundles,
+        )
+        return ep.parse_endpoints(await self._request("POST", "/v1/endpoints", json=body))
 
     async def batch(
         self, urls: list[str], *, formats: Sequence[str] | None = None, concurrency: int = 5,

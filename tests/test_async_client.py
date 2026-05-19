@@ -157,6 +157,63 @@ async def test_map(client: AsyncWebclaw):
     assert "https://example.com/a" in result.urls
 
 
+# -- endpoints ----------------------------------------------------------------
+
+
+@respx.mock
+async def test_endpoints_success_shape(client: AsyncWebclaw):
+    respx.post(f"{BASE}/v1/endpoints").mock(
+        return_value=httpx.Response(200, json={
+            "url": "https://example.com",
+            "bundles_scanned": 2,
+            "endpoint_count": 1,
+            "endpoints": [
+                {"value": "https://api.example.com/graphql", "kind": "graph_ql",
+                 "first_party": False, "source": "vendor.js"},
+            ],
+            "hosts": ["api.example.com"],
+            "truncated": True,
+        })
+    )
+    res = await client.endpoints("https://example.com", include_third_party=True)
+    assert res.url == "https://example.com"
+    assert res.bundles_scanned == 2
+    assert res.truncated is True
+    assert len(res.endpoints) == 1
+    ep = res.endpoints[0]
+    assert ep.value == "https://api.example.com/graphql"
+    assert ep.kind == "graph_ql"
+    assert ep.first_party is False
+    assert ep.source == "vendor.js"
+
+
+@respx.mock
+async def test_endpoints_params_passthrough(client: AsyncWebclaw):
+    route = respx.post(f"{BASE}/v1/endpoints").mock(
+        return_value=httpx.Response(200, json={
+            "url": "https://example.com", "bundles_scanned": 0,
+            "endpoint_count": 0, "endpoints": [], "hosts": [], "truncated": False,
+        })
+    )
+    await client.endpoints(
+        "https://example.com", include_third_party=True, max_bundles=15,
+    )
+    import json
+    payload = json.loads(route.calls.last.request.read())
+    assert payload["include_third_party"] is True
+    assert payload["max_bundles"] == 15
+
+
+@respx.mock
+async def test_endpoints_400(client: AsyncWebclaw):
+    respx.post(f"{BASE}/v1/endpoints").mock(
+        return_value=httpx.Response(400, json={"error": "invalid url"})
+    )
+    with pytest.raises(WebclawError, match="invalid url") as exc:
+        await client.endpoints("bad")
+    assert exc.value.status_code == 400
+
+
 # -- batch --------------------------------------------------------------------
 
 
