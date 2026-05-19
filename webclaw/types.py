@@ -96,8 +96,15 @@ class MapResponse:
 class BatchResult:
     url: str
     markdown: str | None = None
+    text: str | None = None
+    llm: str | None = None
+    json_data: Any | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
+    # Present only when a YouTube URL is batched and the server returns the
+    # yt-dlp short-circuit shape; None for ordinary pages.
+    youtube: YouTubeData | None = None
+    transcript: str | None = None
 
 
 @dataclass
@@ -127,53 +134,22 @@ class BrandResponse:
     data: dict[str, Any] = field(default_factory=dict)
 
 
-# -- Search ------------------------------------------------------------------
-
-@dataclass
-class SearchResult:
-    title: str = ""
-    url: str = ""
-    description: str = ""
-
-
-@dataclass
-class SearchResponse:
-    results: list[SearchResult] = field(default_factory=list)
-    query: str = ""
-
-
-# -- Diff --------------------------------------------------------------------
-
-@dataclass
-class DiffResponse:
-    url: str = ""
-    has_changed: bool = False
-    diff: str = ""
-    previous_hash: str = ""
-    current_hash: str = ""
+# -- Search / Diff -----------------------------------------------------------
+#
+# `Webclaw.search()` and `Webclaw.diff()` return the raw server JSON as a
+# `dict`. Typed wrappers used to be exported here but were never produced
+# by any client method, so they advertised a contract the SDK did not
+# honour. They were removed; typing these endpoints is a deliberate
+# public-API change, not an accidental one.
 
 
 # -- Research ----------------------------------------------------------------
-
-@dataclass
-class ResearchStartResponse:
-    id: str = ""
-    status: str = ""
-
-
-@dataclass
-class ResearchFinding:
-    claim: str = ""
-    source: str = ""
-    relevance: float = 0.0
-
-
-@dataclass
-class ResearchSource:
-    url: str = ""
-    title: str = ""
-    summary: str = ""
-
+#
+# `research()` blocks and returns `ResearchStatusResponse`. The transient
+# start payload (`{id, status}`) is consumed internally as a dict, and
+# `sources` / `findings` are passed through as `list[dict]`, so the
+# previously-exported ResearchStartResponse / ResearchFinding /
+# ResearchSource wrappers were dead and have been removed.
 
 @dataclass
 class ResearchStatusResponse:
