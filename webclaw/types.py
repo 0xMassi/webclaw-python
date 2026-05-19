@@ -204,3 +204,47 @@ class WatchCheckResponse:
     has_changed: bool = False
     diff: str | None = None
     checked_at: str = ""
+
+
+# -- Endpoints ---------------------------------------------------------------
+#
+# `/v1/endpoints` discovers API endpoints embedded in a page's inline
+# JavaScript and `<script src>` bundles -- the calls a SPA makes at
+# runtime that `/v1/map` (sitemap-based) can't see.
+
+# The four endpoint kinds the server classifies. Kept as a tuple of the
+# literal strings the API returns so callers can branch on
+# `endpoint.kind` without importing an enum; unknown future kinds pass
+# through unchanged as plain strings.
+EndpointKind = ("relative_path", "absolute_url", "graph_ql", "web_socket")
+
+
+@dataclass
+class DiscoveredEndpoint:
+    """A single API endpoint found in page JavaScript."""
+    value: str = ""
+    # One of EndpointKind; treated as an open string so a server-added
+    # kind does not break older SDKs.
+    kind: str = ""
+    first_party: bool = False
+    source: str = ""
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> DiscoveredEndpoint:
+        return DiscoveredEndpoint(
+            value=data.get("value", ""),
+            kind=data.get("kind", ""),
+            first_party=data.get("first_party", False),
+            source=data.get("source", ""),
+        )
+
+
+@dataclass
+class EndpointsResponse:
+    """API endpoints discovered in a page's inline JS + script bundles."""
+    url: str = ""
+    bundles_scanned: int = 0
+    endpoint_count: int = 0
+    endpoints: list[DiscoveredEndpoint] = field(default_factory=list)
+    hosts: list[str] = field(default_factory=list)
+    truncated: bool = False

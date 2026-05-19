@@ -216,6 +216,91 @@ def test_map(client: Webclaw):
     assert len(result.urls) == 2
 
 
+# -- endpoints ----------------------------------------------------------------
+
+
+@respx.mock
+def test_endpoints_success_shape(client: Webclaw):
+    respx.post(f"{BASE}/v1/endpoints").mock(
+        return_value=httpx.Response(200, json={
+            "url": "https://example.com",
+            "bundles_scanned": 3,
+            "endpoint_count": 2,
+            "endpoints": [
+                {"value": "/api/users", "kind": "relative_path",
+                 "first_party": True, "source": "main.js"},
+                {"value": "wss://rt.example.com/socket", "kind": "web_socket",
+                 "first_party": True, "source": "inline"},
+            ],
+            "hosts": ["example.com", "rt.example.com"],
+            "truncated": False,
+        })
+    )
+    res = client.endpoints("https://example.com")
+    assert res.url == "https://example.com"
+    assert res.bundles_scanned == 3
+    assert res.endpoint_count == 2
+    assert res.truncated is False
+    assert res.hosts == ["example.com", "rt.example.com"]
+    assert len(res.endpoints) == 2
+    first = res.endpoints[0]
+    assert first.value == "/api/users"
+    assert first.kind == "relative_path"
+    assert first.first_party is True
+    assert first.source == "main.js"
+    assert res.endpoints[1].kind == "web_socket"
+
+
+@respx.mock
+def test_endpoints_params_passthrough(client: Webclaw):
+    route = respx.post(f"{BASE}/v1/endpoints").mock(
+        return_value=httpx.Response(200, json={
+            "url": "https://example.com", "bundles_scanned": 0,
+            "endpoint_count": 0, "endpoints": [], "hosts": [], "truncated": False,
+        })
+    )
+    client.endpoints(
+        "https://example.com", include_third_party=True, max_bundles=10,
+    )
+    import json
+    payload = json.loads(route.calls.last.request.read())
+    assert payload["url"] == "https://example.com"
+    assert payload["include_third_party"] is True
+    assert payload["max_bundles"] == 10
+
+
+@respx.mock
+def test_endpoints_defaults_omitted_and_max_bundles_clamped(client: Webclaw):
+    route = respx.post(f"{BASE}/v1/endpoints").mock(
+        return_value=httpx.Response(200, json={
+            "url": "https://example.com", "bundles_scanned": 0,
+            "endpoint_count": 0, "endpoints": [], "hosts": [], "truncated": False,
+        })
+    )
+    # Defaults must be omitted entirely; over-cap max_bundles clamps to 20.
+    client.endpoints("https://example.com")
+    import json
+    payload = json.loads(route.calls.last.request.read())
+    assert payload == {"url": "https://example.com"}
+
+    client.endpoints("https://example.com", max_bundles=999)
+    payload = json.loads(route.calls.last.request.read())
+    assert payload["max_bundles"] == 20
+
+
+@respx.mock
+def test_endpoints_400_invalid_url(client: Webclaw):
+    respx.post(f"{BASE}/v1/endpoints").mock(
+        return_value=httpx.Response(400, json={"error": "url is required"})
+    )
+    with pytest.raises(WebclawError, match="url is required") as exc:
+        client.endpoints("not-a-url")
+    assert exc.value.status_code == 400
+    assert not isinstance(
+        exc.value, (AuthenticationError, NotFoundError, RateLimitError)
+    )
+
+
 # -- batch --------------------------------------------------------------------
 
 

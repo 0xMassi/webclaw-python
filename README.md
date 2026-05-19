@@ -148,6 +148,28 @@ for item in result.results:
 
 **Parameters:** `urls` (list[str]), `formats` (optional), `concurrency` (int, default 5).
 
+### Endpoints
+
+Discover the API endpoints a page calls at runtime by scanning its inline JavaScript and external `<script src>` bundles. This surfaces the routes a single-page app hits that `map` (sitemap-based) can't see: relative paths, absolute URLs, GraphQL operations, and WebSocket endpoints.
+
+```python
+result = client.endpoints(
+    "https://app.example.com",
+    include_third_party=False,  # default: skip analytics/CDN hosts
+    max_bundles=20,             # default & server max: external scripts to scan
+)
+
+print(result.bundles_scanned, result.endpoint_count, result.truncated)
+print(result.hosts)  # list[str] of hosts seen across endpoints
+
+for e in result.endpoints:
+    print(e.kind, e.value, "first-party" if e.first_party else "third-party", "via", e.source)
+```
+
+Each endpoint's `kind` is one of `"relative_path"`, `"absolute_url"`, `"graph_ql"`, `"web_socket"` (the values in `EndpointKind`). `truncated` is `True` when more bundles existed than `max_bundles` allowed.
+
+**Parameters:** `url` (str), `include_third_party` (bool, default False), `max_bundles` (int, default 20, capped at 20).
+
 ### Extract
 
 LLM-powered structured data extraction. Use either a JSON schema or a natural language prompt.
@@ -409,7 +431,7 @@ asyncio.run(main())
 This package ships with a `py.typed` marker (PEP 561). Type checkers like mypy and pyright will pick up all type annotations automatically. All response types are dataclasses importable from the top-level package:
 
 ```python
-from webclaw import ScrapeResponse, CrawlStatus, MapResponse, ExtractResponse
+from webclaw import ScrapeResponse, CrawlStatus, MapResponse, ExtractResponse, EndpointsResponse
 ```
 
 ## License

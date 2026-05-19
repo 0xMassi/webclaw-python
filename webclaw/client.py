@@ -11,9 +11,9 @@ import httpx
 from . import _endpoints as ep
 from .errors import AuthenticationError, NotFoundError, RateLimitError, TimeoutError, WebclawError
 from .types import (
-    BatchResponse, BrandResponse, CrawlStatus, ExtractResponse, MapResponse,
-    ResearchStatusResponse, ScrapeResponse, SummarizeResponse,
-    WatchCheckResponse, WatchEntry, WatchListResponse,
+    BatchResponse, BrandResponse, CrawlStatus, EndpointsResponse,
+    ExtractResponse, MapResponse, ResearchStatusResponse, ScrapeResponse,
+    SummarizeResponse, WatchCheckResponse, WatchEntry, WatchListResponse,
 )
 
 
@@ -93,6 +93,32 @@ class Webclaw:
     def map(self, url: str) -> MapResponse:
         """Discover URLs from a site's sitemap."""
         return ep.parse_map(self._request("POST", "/v1/map", json={"url": url}))
+
+    def endpoints(
+        self,
+        url: str,
+        *,
+        include_third_party: bool = False,
+        max_bundles: int = 20,
+    ) -> EndpointsResponse:
+        """Discover API endpoints embedded in a page's JavaScript.
+
+        Scans inline ``<script>`` blocks and external ``<script src>``
+        bundles for the API calls a page makes at runtime -- the routes
+        a single-page app hits that :meth:`map` (sitemap-based) cannot
+        see. Returns relative paths, absolute URLs, GraphQL operations,
+        and WebSocket endpoints.
+
+        :param url: Page URL to analyse.
+        :param include_third_party: Also report endpoints whose host is
+            not the page's own (analytics, CDNs, etc.). Default False.
+        :param max_bundles: Max external script bundles to fetch and
+            scan. Server caps this at 20; larger values are clamped.
+        """
+        body = ep.build_endpoints_body(
+            url, include_third_party=include_third_party, max_bundles=max_bundles,
+        )
+        return ep.parse_endpoints(self._request("POST", "/v1/endpoints", json=body))
 
     def batch(
         self, urls: list[str], *, formats: Sequence[str] | None = None, concurrency: int = 5,

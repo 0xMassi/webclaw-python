@@ -17,6 +17,8 @@ from .types import (
     CrawlJob,
     CrawlPage,
     CrawlStatus,
+    DiscoveredEndpoint,
+    EndpointsResponse,
     ExtractResponse,
     MapResponse,
     ResearchStatusResponse,
@@ -164,6 +166,23 @@ def build_research_body(
     return body
 
 
+def build_endpoints_body(
+    url: str,
+    *,
+    include_third_party: bool = False,
+    max_bundles: int = 20,
+) -> dict[str, Any]:
+    # The server caps max_bundles at 20 and rejects more with a 400.
+    # Clamp here so a caller passing a larger number gets the max scan
+    # instead of a hard error.
+    body: dict[str, Any] = {"url": url}
+    if include_third_party:
+        body["include_third_party"] = True
+    if max_bundles != 20:
+        body["max_bundles"] = min(max_bundles, 20)
+    return body
+
+
 def build_watch_create_body(
     url: str,
     *,
@@ -305,6 +324,22 @@ def parse_watch_entry(data: dict[str, Any]) -> WatchEntry:
 def parse_watch_list(data: dict[str, Any]) -> WatchListResponse:
     watches = [WatchEntry.from_dict(w) for w in data.get("watches", [])]
     return WatchListResponse(watches=watches, total=data.get("total", len(watches)))
+
+
+def parse_endpoints(data: dict[str, Any]) -> EndpointsResponse:
+    endpoints = [
+        DiscoveredEndpoint.from_dict(e)
+        for e in data.get("endpoints", [])
+        if isinstance(e, dict)
+    ]
+    return EndpointsResponse(
+        url=data.get("url", ""),
+        bundles_scanned=data.get("bundles_scanned", 0),
+        endpoint_count=data.get("endpoint_count", len(endpoints)),
+        endpoints=endpoints,
+        hosts=data.get("hosts", []),
+        truncated=data.get("truncated", False),
+    )
 
 
 def parse_watch_check(data: dict[str, Any]) -> WatchCheckResponse:
