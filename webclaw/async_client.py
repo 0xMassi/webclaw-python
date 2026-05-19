@@ -5,11 +5,19 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import Any, Sequence
+from urllib.parse import quote
 
 import httpx
 
 from . import _endpoints as ep
-from .client import _raise_for_status
+from .client import (
+    _KEEP_POLLING,
+    _POLL_BACKOFF_FACTOR,
+    _POLL_MAX_INTERVAL,
+    _classify_status,
+    _poll_outcome,
+    _raise_for_status,
+)
 from .errors import TimeoutError, WebclawError
 from .types import (
     BatchResponse, BrandResponse, CrawlStatus, ExtractResponse, MapResponse,
@@ -50,7 +58,12 @@ class AsyncWebclaw:
     # -- internal -------------------------------------------------------------
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
-        response = await self._client.request(method, path, **kwargs)
+        try:
+            response = await self._client.request(method, path, **kwargs)
+        except httpx.TimeoutException as exc:
+            raise TimeoutError(f"Request to {path} timed out") from exc
+        except httpx.TransportError as exc:
+            raise WebclawError(f"Transport error contacting {path}: {exc}") from exc
         _raise_for_status(response)
         return response.json()
 
@@ -133,7 +146,6 @@ class AsyncWebclaw:
             raise ValueError("name is required")
         if not url:
             raise ValueError("url is required")
-        from urllib.parse import quote
         return await self._request("POST", f"/v1/scrape/{quote(name, safe='')}", json={"url": url})
 
     async def diff(self, url: str, **kwargs: Any) -> dict:
@@ -247,16 +259,20 @@ class AsyncCrawlJobHandle:
 async def _async_poll_until_done(
     *, fetcher, parser, label: str, interval: float, timeout: float, status_attr: str = "status",
 ) -> Any:
-    """Async version of poll-until-done. See client._poll_until_done."""
+    """Async version of poll-until-done. See client._poll_until_done.
+
+    Shares status classification and the terminal/unknown-state fail-fast
+    logic with the sync path, and applies the same capped backoff.
+    """
     deadline = time.monotonic() + timeout
+    delay = interval
     while True:
         result = await fetcher()
-        status = result.get("status", "") if isinstance(result, dict) else getattr(result, status_attr)
-        if status == "completed":
-            return parser(result)
-        if status == "failed":
-            error = result.get("error", f"{label} failed") if isinstance(result, dict) else f"{label} failed"
-            raise WebclawError(error, status_code=None)
+        status = _classify_status(result, status_attr)
+        outcome = _poll_outcome(result, status, parser, label)
+        if outcome is not _KEEP_POLLING:
+            return outcome
         if time.monotonic() >= deadline:
             raise TimeoutError(f"{label} did not complete within {timeout}s")
-        await asyncio.sleep(interval)
+        await asyncio.sleep(delay)
+        delay = min(delay * _POLL_BACKOFF_FACTOR, _POLL_MAX_INTERVAL)

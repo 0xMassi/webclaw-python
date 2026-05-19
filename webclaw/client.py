@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from typing import Any, Sequence
+from urllib.parse import quote
 
 import httpx
 
@@ -48,7 +49,12 @@ class Webclaw:
     # -- internal -------------------------------------------------------------
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
-        response = self._client.request(method, path, **kwargs)
+        try:
+            response = self._client.request(method, path, **kwargs)
+        except httpx.TimeoutException as exc:
+            raise TimeoutError(f"Request to {path} timed out") from exc
+        except httpx.TransportError as exc:
+            raise WebclawError(f"Transport error contacting {path}: {exc}") from exc
         _raise_for_status(response)
         return response.json()
 
@@ -142,7 +148,6 @@ class Webclaw:
             raise ValueError("url is required")
         # URL-encode the vertical name to be safe against typo'd input,
         # even though legitimate names are always [a-z_].
-        from urllib.parse import quote
         return self._request("POST", f"/v1/scrape/{quote(name, safe='')}", json={"url": url})
 
     def diff(self, url: str, **kwargs: Any) -> dict:
@@ -260,9 +265,18 @@ class CrawlJobHandle:
 def _raise_for_status(response: httpx.Response) -> None:
     if response.status_code < 400:
         return
+    # Parse the body once. A well-formed error is a JSON object with an
+    # "error" key, but the server (or an upstream proxy) may return a JSON
+    # array, string, number, or non-JSON text on failure -- none of those
+    # have .get(), so fall back to the raw text instead of masking the
+    # real status with an AttributeError.
     try:
-        detail = response.json().get("error", response.text)
-    except (ValueError, KeyError):
+        parsed = response.json()
+    except (ValueError, TypeError):
+        parsed = None
+    if isinstance(parsed, dict):
+        detail = parsed.get("error", response.text)
+    else:
         detail = response.text
 
     if response.status_code in (401, 403):
@@ -274,6 +288,37 @@ def _raise_for_status(response: httpx.Response) -> None:
     raise WebclawError(str(detail), status_code=response.status_code)
 
 
+# Backoff ceiling for poll loops: the per-request delay grows from
+# `interval` up to this cap so a long-running job does not hammer the API
+# every `interval` seconds for its entire (up to 20 min) lifetime.
+_POLL_MAX_INTERVAL = 15.0
+_POLL_BACKOFF_FACTOR = 1.5
+
+
+def _classify_status(result: Any, status_attr: str) -> str:
+    return result.get("status", "") if isinstance(result, dict) else getattr(result, status_attr, "")
+
+
+def _poll_outcome(result: Any, status: str, parser, label: str) -> Any:
+    """Return parser(result) on success, raise on a terminal failure or an
+    unrecognised (assumed-terminal) status, or return the sentinel
+    ``_KEEP_POLLING`` while the job is still in flight."""
+    if status == ep.SUCCESS_STATE:
+        return parser(result)
+    if status in ep.FAILURE_STATES:
+        error = result.get("error", f"{label} failed") if isinstance(result, dict) else f"{label} failed"
+        raise WebclawError(error or f"{label} failed", status_code=None)
+    if status not in ep.IN_PROGRESS_STATES:
+        # Unknown status: treat as terminal so we fail fast instead of
+        # looping until the wall-clock timeout on a status the server
+        # added that this SDK version does not understand.
+        raise WebclawError(f"{label} returned unknown status {status!r}", status_code=None)
+    return _KEEP_POLLING
+
+
+_KEEP_POLLING = object()
+
+
 def _poll_until_done(
     *, fetcher, parser, label: str, interval: float, timeout: float, status_attr: str = "status",
 ) -> Any:
@@ -281,16 +326,21 @@ def _poll_until_done(
 
     For research: fetcher returns raw dict, parser converts to dataclass.
     For crawl: fetcher returns CrawlStatus, parser is identity.
+
+    The delay between polls starts at ``interval`` and grows by
+    ``_POLL_BACKOFF_FACTOR`` up to ``_POLL_MAX_INTERVAL``. A terminal
+    failure or an unrecognised status raises immediately rather than
+    waiting out ``timeout``.
     """
     deadline = time.monotonic() + timeout
+    delay = interval
     while True:
         result = fetcher()
-        status = result.get("status", "") if isinstance(result, dict) else getattr(result, status_attr)
-        if status == "completed":
-            return parser(result)
-        if status == "failed":
-            error = result.get("error", f"{label} failed") if isinstance(result, dict) else f"{label} failed"
-            raise WebclawError(error, status_code=None)
+        status = _classify_status(result, status_attr)
+        outcome = _poll_outcome(result, status, parser, label)
+        if outcome is not _KEEP_POLLING:
+            return outcome
         if time.monotonic() >= deadline:
             raise TimeoutError(f"{label} did not complete within {timeout}s")
-        time.sleep(interval)
+        time.sleep(delay)
+        delay = min(delay * _POLL_BACKOFF_FACTOR, _POLL_MAX_INTERVAL)
