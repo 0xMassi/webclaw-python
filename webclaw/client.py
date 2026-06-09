@@ -56,7 +56,7 @@ class Webclaw:
         except httpx.TransportError as exc:
             raise WebclawError(f"Transport error contacting {path}: {exc}") from exc
         _raise_for_status(response)
-        return response.json()
+        return _decode_json_body(response)
 
     # -- endpoints ------------------------------------------------------------
 
@@ -288,6 +288,26 @@ class CrawlJobHandle:
 
 # -- helpers ------------------------------------------------------------------
 
+def _decode_json_body(response: httpx.Response) -> Any:
+    """Decode a successful response body as JSON, tolerating empty bodies.
+
+    A 204 No Content (e.g. watch_delete) or any other success with an empty
+    body has nothing to parse -- return None instead of letting
+    response.json() raise a JSONDecodeError. A non-empty body that still
+    isn't valid JSON is a real server contract violation, so surface it as a
+    clear WebclawError rather than a bare decode error.
+    """
+    if response.status_code == 204 or not response.content:
+        return None
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise WebclawError(
+            f"Expected JSON response but got non-JSON body (status {response.status_code})",
+            status_code=response.status_code,
+        ) from exc
+
+
 def _raise_for_status(response: httpx.Response) -> None:
     if response.status_code < 400:
         return
@@ -319,6 +339,27 @@ def _raise_for_status(response: httpx.Response) -> None:
 # every `interval` seconds for its entire (up to 20 min) lifetime.
 _POLL_MAX_INTERVAL = 15.0
 _POLL_BACKOFF_FACTOR = 1.5
+
+# How many *consecutive* transient fetch failures the poll loop tolerates
+# before giving up. A flaky network blip or a brief 429/5xx mid-job
+# shouldn't abort a 20-minute research job; a sustained outage still bails.
+# Mirrors the JS SDK's isTransientPollError cap.
+_MAX_TRANSIENT_POLL_FAILURES = 5
+
+
+def _is_transient_poll_error(exc: Exception) -> bool:
+    """Whether a fetch error during polling is worth retrying.
+
+    Rate limits, timeouts, and 5xx WebclawErrors are transient: the job is
+    still running server-side, the status fetch just failed. Auth/404 and
+    other 4xx are terminal and re-raised immediately.
+    """
+    if isinstance(exc, (TimeoutError, RateLimitError)):
+        return True
+    if isinstance(exc, WebclawError):
+        code = exc.status_code
+        return code is not None and 500 <= code < 600
+    return False
 
 
 def _classify_status(result: Any, status_attr: str) -> str:
@@ -360,8 +401,26 @@ def _poll_until_done(
     """
     deadline = time.monotonic() + timeout
     delay = interval
+    transient_failures = 0
     while True:
-        result = fetcher()
+        try:
+            result = fetcher()
+        except WebclawError as exc:
+            if not _is_transient_poll_error(exc):
+                raise
+            transient_failures += 1
+            if transient_failures > _MAX_TRANSIENT_POLL_FAILURES:
+                raise WebclawError(
+                    f"{label} polling gave up after {_MAX_TRANSIENT_POLL_FAILURES} "
+                    f"consecutive transient failures: {exc}",
+                    status_code=exc.status_code,
+                ) from exc
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"{label} did not complete within {timeout}s") from exc
+            time.sleep(delay)
+            delay = min(delay * _POLL_BACKOFF_FACTOR, _POLL_MAX_INTERVAL)
+            continue
+        transient_failures = 0
         status = _classify_status(result, status_attr)
         outcome = _poll_outcome(result, status, parser, label)
         if outcome is not _KEEP_POLLING:

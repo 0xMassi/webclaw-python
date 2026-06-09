@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+from .errors import WebclawError
 from .types import (
     BatchResponse,
     BatchResult,
@@ -202,6 +203,15 @@ def build_watch_create_body(
 # Response parsers
 # ---------------------------------------------------------------------------
 
+def _require(data: dict[str, Any], key: str, *, context: str) -> Any:
+    """Pull a required field from a 200 body, raising a clear WebclawError if
+    it's missing. A malformed-but-successful response should surface as an
+    actionable SDK error, not a bare KeyError from deep in a parser."""
+    if key not in data:
+        raise WebclawError(f"Malformed {context} response: missing {key!r}")
+    return data[key]
+
+
 def _parse_youtube(raw_yt: Any) -> YouTubeData | None:
     """Build a YouTubeData from the server's `youtube` block, or None when
     the block is absent / not an object. Shared by scrape and batch."""
@@ -227,11 +237,12 @@ def _parse_youtube(raw_yt: Any) -> YouTubeData | None:
 
 def parse_scrape(data: dict[str, Any]) -> ScrapeResponse:
     cache = None
-    if data.get("cache"):
-        cache = CacheInfo(status=data["cache"]["status"])
+    raw_cache = data.get("cache")
+    if isinstance(raw_cache, dict):
+        cache = CacheInfo(status=raw_cache.get("status", ""))
     youtube = _parse_youtube(data.get("youtube"))
     return ScrapeResponse(
-        url=data["url"],
+        url=_require(data, "url", context="scrape"),
         metadata=data.get("metadata", {}),
         markdown=data.get("markdown"),
         text=data.get("text"),
@@ -245,13 +256,16 @@ def parse_scrape(data: dict[str, Any]) -> ScrapeResponse:
 
 
 def parse_crawl_job(data: dict[str, Any]) -> CrawlJob:
-    return CrawlJob(id=data["id"], status=data["status"])
+    return CrawlJob(
+        id=_require(data, "id", context="crawl job"),
+        status=_require(data, "status", context="crawl job"),
+    )
 
 
 def parse_crawl_status(data: dict[str, Any]) -> CrawlStatus:
     pages = [
         CrawlPage(
-            url=p["url"],
+            url=_require(p, "url", context="crawl page"),
             markdown=p.get("markdown"),
             metadata=p.get("metadata", {}),
             error=p.get("error"),
@@ -259,8 +273,8 @@ def parse_crawl_status(data: dict[str, Any]) -> CrawlStatus:
         for p in data.get("pages", [])
     ]
     return CrawlStatus(
-        id=data["id"],
-        status=data["status"],
+        id=_require(data, "id", context="crawl status"),
+        status=_require(data, "status", context="crawl status"),
         pages=pages,
         total=data.get("total", 0),
         completed=data.get("completed", 0),
