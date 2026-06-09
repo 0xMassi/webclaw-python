@@ -12,9 +12,12 @@ import httpx
 from . import _endpoints as ep
 from .client import (
     _KEEP_POLLING,
+    _MAX_TRANSIENT_POLL_FAILURES,
     _POLL_BACKOFF_FACTOR,
     _POLL_MAX_INTERVAL,
     _classify_status,
+    _decode_json_body,
+    _is_transient_poll_error,
     _poll_outcome,
     _raise_for_status,
 )
@@ -65,7 +68,7 @@ class AsyncWebclaw:
         except httpx.TransportError as exc:
             raise WebclawError(f"Transport error contacting {path}: {exc}") from exc
         _raise_for_status(response)
-        return response.json()
+        return _decode_json_body(response)
 
     # -- endpoints ------------------------------------------------------------
 
@@ -284,8 +287,26 @@ async def _async_poll_until_done(
     """
     deadline = time.monotonic() + timeout
     delay = interval
+    transient_failures = 0
     while True:
-        result = await fetcher()
+        try:
+            result = await fetcher()
+        except WebclawError as exc:
+            if not _is_transient_poll_error(exc):
+                raise
+            transient_failures += 1
+            if transient_failures > _MAX_TRANSIENT_POLL_FAILURES:
+                raise WebclawError(
+                    f"{label} polling gave up after {_MAX_TRANSIENT_POLL_FAILURES} "
+                    f"consecutive transient failures: {exc}",
+                    status_code=exc.status_code,
+                ) from exc
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"{label} did not complete within {timeout}s") from exc
+            await asyncio.sleep(delay)
+            delay = min(delay * _POLL_BACKOFF_FACTOR, _POLL_MAX_INTERVAL)
+            continue
+        transient_failures = 0
         status = _classify_status(result, status_attr)
         outcome = _poll_outcome(result, status, parser, label)
         if outcome is not _KEEP_POLLING:
