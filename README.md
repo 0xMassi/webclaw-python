@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://webclaw.io">
-    <img src=".github/banner.png" alt="webclaw" width="600" />
+    <img src=".github/banner.png" alt="webclaw" width="760" />
   </a>
 </p>
 
@@ -9,9 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/webclaw"><img src="https://img.shields.io/pypi/v/webclaw?style=flat-square&color=212529" alt="PyPI" /></a>
-  <a href="https://pypi.org/project/webclaw"><img src="https://img.shields.io/pypi/pyversions/webclaw?style=flat-square&color=212529" alt="Python" /></a>
-  <a href="https://github.com/0xMassi/webclaw-python/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-212529?style=flat-square" alt="License" /></a>
+  <a href="https://pypi.org/project/webclaw"><img src="https://shieldcn.dev/pypi/v/webclaw.svg?variant=branded" alt="PyPI" /></a>
+  <a href="https://pypi.org/project/webclaw"><img src="https://shieldcn.dev/pypi/pyversions/webclaw.svg?variant=branded" alt="Python versions" /></a>
+  <a href="https://github.com/0xMassi/webclaw-python/stargazers"><img src="https://shieldcn.dev/github/stars/0xMassi/webclaw-python.svg?variant=branded&logo=github" alt="Stars" /></a>
+  <a href="https://github.com/0xMassi/webclaw-python/blob/main/LICENSE"><img src="https://shieldcn.dev/github/license/0xMassi/webclaw-python.svg?variant=branded" alt="License" /></a>
 </p>
 
 ---
