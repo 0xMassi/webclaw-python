@@ -14,6 +14,7 @@ from .types import (
     BatchResponse, BrandResponse, CrawlStatus, EndpointsResponse,
     ExtractResponse, MapResponse, ResearchStatusResponse, ScrapeResponse,
     SummarizeResponse, WatchCheckResponse, WatchEntry, WatchListResponse,
+    XAudienceResponse, XMonitor, XMonitorListResponse,
 )
 
 
@@ -264,6 +265,116 @@ class Webclaw:
     def watch_check(self, watch_id: str) -> WatchCheckResponse:
         """Trigger an immediate check for a watch monitor."""
         return ep.parse_watch_check(self._request("POST", f"/v1/watch/{watch_id}/check"))
+
+    # -- X (Twitter) monitoring -----------------------------------------------
+    #
+    # The X analog of the watch endpoints: a monitor polls X on a schedule and
+    # fires a webhook on new matches. Paid-only -- the server returns 403 for
+    # free/lapsed accounts (surfaced as AuthenticationError). Monitors cost 1
+    # credit per check; audience export costs 1 credit per page fetched. Max 50
+    # monitors per user.
+
+    def create_x_monitor(
+        self,
+        kind: str,
+        target: str,
+        *,
+        name: str | None = None,
+        interval_minutes: int | None = None,
+        webhook_url: str | None = None,
+        include_retweets: bool | None = None,
+        include_replies: bool | None = None,
+        include_quotes: bool | None = None,
+        min_faves: int | None = None,
+        keyword: str | None = None,
+        lang: str | None = None,
+    ) -> XMonitor:
+        """Create an X monitor that polls X and fires a webhook on new matches.
+
+        :param kind: One of ``"profile"``, ``"search"``, ``"list"``,
+            ``"replies"`` (the values in ``XMonitorKind``).
+        :param target: Handle (leading ``@`` is stripped server-side), search
+            query, list id, or tweet id -- interpreted per ``kind``.
+        :param interval_minutes: Poll cadence; server default 15, clamped
+            2..10080. Omit to accept the server default.
+        :param webhook_url: Discord/Slack/generic webhook fired on new matches.
+        :param min_faves: Minimum likes for a tweet to match (server default 0).
+        :param keyword: Only match tweets containing this substring.
+        :param lang: Only match tweets in this language code.
+        """
+        body = ep.build_x_monitor_create_body(
+            kind, target, name=name, interval_minutes=interval_minutes,
+            webhook_url=webhook_url, include_retweets=include_retweets,
+            include_replies=include_replies, include_quotes=include_quotes,
+            min_faves=min_faves, keyword=keyword, lang=lang,
+        )
+        return ep.parse_x_monitor(self._request("POST", ep.X_MONITORS_PATH, json=body))
+
+    def list_x_monitors(self, *, limit: int = 50, offset: int = 0) -> XMonitorListResponse:
+        """List X monitors (each a full monitor object)."""
+        return ep.parse_x_monitor_list(
+            self._request("GET", ep.X_MONITORS_PATH, params={"limit": limit, "offset": offset})
+        )
+
+    def get_x_monitor(self, monitor_id: str) -> XMonitor:
+        """Get a single X monitor by id (full monitor object)."""
+        return ep.parse_x_monitor(self._request("GET", ep.x_monitor_path(monitor_id)))
+
+    def update_x_monitor(
+        self,
+        monitor_id: str,
+        *,
+        name: str | None = None,
+        interval_minutes: int | None = None,
+        webhook_url: str | None = None,
+        active: bool | None = None,
+    ) -> None:
+        """Update an X monitor. Only the fields you pass are changed."""
+        body = ep.build_x_monitor_update_body(
+            name=name, interval_minutes=interval_minutes,
+            webhook_url=webhook_url, active=active,
+        )
+        self._request("PATCH", ep.x_monitor_path(monitor_id), json=body)
+
+    def delete_x_monitor(self, monitor_id: str) -> None:
+        """Delete an X monitor."""
+        self._request("DELETE", ep.x_monitor_path(monitor_id))
+
+    def check_x_monitor(self, monitor_id: str) -> None:
+        """Trigger an immediate check for an X monitor (runs in the background).
+
+        Returns nothing; the server responds ``{"status": "checking"}`` and
+        the actual poll + webhook happen asynchronously. Costs 1 credit.
+        """
+        self._request("POST", ep.x_monitor_check_path(monitor_id))
+
+    def export_x_audience(
+        self,
+        *,
+        handle: str | None = None,
+        user_id: str | None = None,
+        direction: str | None = None,
+        cursor: str | None = None,
+        max_pages: int | None = None,
+    ) -> XAudienceResponse:
+        """Export an account's followers or following, cursor-paginated.
+
+        Provide ``handle`` OR ``user_id`` (a pre-resolved numeric id skips the
+        unbilled re-resolve on later pages). Metered at 1 credit per page.
+
+        :param direction: ``"followers"`` (default) or ``"following"``.
+        :param cursor: Opaque ``next_cursor`` from a previous response.
+        :param max_pages: Server default 2, clamped 1..10 (~1-2k users/page).
+
+        To page a full audience, call repeatedly, passing the returned
+        ``user_id`` and ``next_cursor`` back in, until ``next_cursor`` is
+        ``None``.
+        """
+        body = ep.build_x_audience_body(
+            handle=handle, user_id=user_id, direction=direction,
+            cursor=cursor, max_pages=max_pages,
+        )
+        return ep.parse_x_audience(self._request("POST", ep.X_AUDIENCE_PATH, json=body))
 
 
 class CrawlJobHandle:

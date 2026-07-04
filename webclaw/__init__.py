@@ -28,6 +28,11 @@ from .types import (
     WatchCheckResponse,
     WatchEntry,
     WatchListResponse,
+    XAudienceResponse,
+    XAudienceUser,
+    XMonitor,
+    XMonitorKind,
+    XMonitorListResponse,
     YouTubeData,
 )
 
@@ -56,6 +61,11 @@ __all__ = [
     "WatchCheckResponse",
     "WatchEntry",
     "WatchListResponse",
+    "XAudienceResponse",
+    "XAudienceUser",
+    "XMonitor",
+    "XMonitorKind",
+    "XMonitorListResponse",
     "YouTubeData",
     # errors
     "WebclawError",

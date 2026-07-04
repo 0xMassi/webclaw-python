@@ -206,6 +206,113 @@ class WatchCheckResponse:
     checked_at: str = ""
 
 
+# -- X (Twitter) monitoring --------------------------------------------------
+#
+# The X monitoring endpoints are the X analog of the URL-monitoring `watch`
+# endpoints: a monitor polls X on a schedule and fires a webhook on new
+# matches. These are paid-only features -- the server returns 403 for
+# free/lapsed accounts. Monitors cost 1 credit per check (automated or
+# manual); audience export costs 1 credit per page fetched.
+
+# The four monitor kinds the server accepts. Kept as a tuple of the literal
+# strings so callers can branch on `monitor.kind` without importing an enum;
+# an unknown future kind passes through unchanged as a plain string.
+XMonitorKind = ("profile", "search", "list", "replies")
+
+
+@dataclass
+class XMonitor:
+    """A single X (Twitter) monitor.
+
+    A create/get/list response is the same object; `list`/`get` return the
+    full set of fields, while the `create` response populates only the core
+    subset (id, kind, target, name, interval_minutes, webhook_url, active).
+    The remaining match-filter and timestamp fields default sensibly so a
+    partial create payload still parses.
+    """
+    id: str = ""
+    kind: str = ""  # one of XMonitorKind
+    target: str = ""
+    name: str | None = None
+    interval_minutes: int = 15
+    webhook_url: str | None = None
+    active: bool = True
+    include_retweets: bool = True
+    include_replies: bool = True
+    include_quotes: bool = True
+    min_faves: int = 0
+    keyword: str | None = None
+    lang: str | None = None
+    last_checked_at: str | None = None
+    last_matched_at: str | None = None
+    created_at: str = ""
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> XMonitor:
+        return XMonitor(
+            id=data.get("id", ""),
+            kind=data.get("kind", ""),
+            target=data.get("target", ""),
+            name=data.get("name"),
+            interval_minutes=data.get("interval_minutes", 15),
+            webhook_url=data.get("webhook_url"),
+            active=data.get("active", True),
+            include_retweets=data.get("include_retweets", True),
+            include_replies=data.get("include_replies", True),
+            include_quotes=data.get("include_quotes", True),
+            min_faves=data.get("min_faves", 0),
+            keyword=data.get("keyword"),
+            lang=data.get("lang"),
+            last_checked_at=data.get("last_checked_at"),
+            last_matched_at=data.get("last_matched_at"),
+            created_at=data.get("created_at", ""),
+        )
+
+
+@dataclass
+class XMonitorListResponse:
+    monitors: list[XMonitor] = field(default_factory=list)
+
+
+@dataclass
+class XAudienceUser:
+    """A single follower/following account in an audience export page."""
+    id: str = ""
+    screen_name: str = ""
+    name: str = ""
+    followers: int = 0
+    description: str | None = None
+    url: str | None = None
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> XAudienceUser:
+        return XAudienceUser(
+            id=data.get("id", ""),
+            screen_name=data.get("screen_name", ""),
+            name=data.get("name", ""),
+            followers=data.get("followers", 0),
+            description=data.get("description"),
+            url=data.get("url"),
+        )
+
+
+@dataclass
+class XAudienceResponse:
+    """One cursor-paginated page of an audience export.
+
+    `next_cursor` is `None` once the audience is fully walked. To page a full
+    audience, call `x_audience` repeatedly, passing the returned `user_id` and
+    `next_cursor` back in, until `next_cursor` is `None`.
+    """
+    user_id: str = ""
+    direction: str = "followers"
+    count: int = 0
+    users: list[XAudienceUser] = field(default_factory=list)
+    next_cursor: str | None = None
+    pages_fetched: int = 0
+    credits_charged: int = 0
+
+
 # -- Endpoints ---------------------------------------------------------------
 #
 # `/v1/endpoints` discovers API endpoints embedded in a page's inline

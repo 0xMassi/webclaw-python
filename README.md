@@ -344,6 +344,98 @@ print(check.diff)         # str | None
 print(check.checked_at)   # ISO timestamp
 ```
 
+### X (Twitter) monitoring
+
+Monitor X for new tweets matching a profile, search, list, or reply thread, and fire a webhook on new matches — plus export an account's followers or following. These are **paid-only** features (a free/lapsed account gets `AuthenticationError` for 403). Monitors and audience export are billed per X request at your plan rate (Starter 5, Growth 3, Pro 2, Scale 1 credits). Max 50 monitors per user.
+
+**Create a monitor:**
+
+```python
+monitor = client.create_x_monitor(
+    "search",                 # "profile" | "search" | "list" | "replies"
+    "web scraping",           # handle / search query / list id / tweet id (per kind)
+    name="Scraping mentions",
+    interval_minutes=15,      # default 15, clamped 2..10080
+    webhook_url="https://hooks.example.com/x",
+    include_retweets=True,    # defaults: retweets/replies/quotes all True
+    include_replies=False,
+    include_quotes=True,
+    min_faves=50,             # minimum likes to match (default 0)
+    keyword="rust",           # only match tweets containing this
+    lang="en",                # only match this language code
+)
+print(monitor.id, monitor.kind, monitor.active)
+```
+
+Only `kind` and `target` are required; every other argument is omitted from the request when left unset, so the server applies its own default.
+
+**List monitors** (each is a full monitor object):
+
+```python
+result = client.list_x_monitors(limit=50, offset=0)
+for m in result.monitors:
+    print(m.id, m.kind, m.target, m.last_matched_at, m.active)
+```
+
+**Get, update, delete, and check:**
+
+```python
+m = client.get_x_monitor("monitor-id")
+
+# PATCH — only the fields you pass are changed
+client.update_x_monitor("monitor-id", active=False, interval_minutes=60)
+
+client.delete_x_monitor("monitor-id")
+
+# Trigger an immediate check (runs in the background; billed at your plan rate)
+client.check_x_monitor("monitor-id")
+```
+
+**Webhook payload** posted to `webhook_url` on a match (Discord/Slack URLs get native formatting instead):
+
+```json
+{
+  "event": "x.monitor.matched",
+  "monitor_id": "xm-1", "kind": "search", "target": "web scraping",
+  "new_count": 1,
+  "tweets": [
+    {
+      "id": "...", "screen_name": "...", "text": "...", "url": "...",
+      "created_at": "...", "favorite_count": 12, "retweet_count": 3,
+      "reply_count": 1, "lang": "en", "is_retweet": false,
+      "is_reply": false, "is_quote": false
+    }
+  ],
+  "checked_at": "..."
+}
+```
+
+**Export an audience** (followers or following), cursor-paginated and metered per page at your plan rate (Starter 5, Growth 3, Pro 2, Scale 1 credits):
+
+```python
+# Provide handle OR user_id. A pre-resolved user_id skips the (unbilled)
+# re-resolve on later pages.
+page = client.export_x_audience(
+    handle="@jack",
+    direction="followers",   # "followers" (default) | "following"
+    max_pages=2,             # default 2, clamped 1..10 (~1-2k users/page)
+)
+
+for u in page.users:
+    print(u.screen_name, u.name, u.followers, u.description)
+
+print(page.pages_fetched, page.credits_charged)
+
+# Walk the full audience: keep paging until next_cursor is None.
+user_id, cursor = page.user_id, page.next_cursor
+while cursor is not None:
+    page = client.export_x_audience(user_id=user_id, cursor=cursor)
+    # ... process page.users ...
+    cursor = page.next_cursor
+```
+
+Every X method has an async equivalent on `AsyncWebclaw` with identical parameters.
+
 ## Error Handling
 
 All errors inherit from `WebclawError`, which carries the HTTP status code when available.
@@ -431,7 +523,10 @@ asyncio.run(main())
 This package ships with a `py.typed` marker (PEP 561). Type checkers like mypy and pyright will pick up all type annotations automatically. All response types are dataclasses importable from the top-level package:
 
 ```python
-from webclaw import ScrapeResponse, CrawlStatus, MapResponse, ExtractResponse, EndpointsResponse
+from webclaw import (
+    ScrapeResponse, CrawlStatus, MapResponse, ExtractResponse, EndpointsResponse,
+    XMonitor, XMonitorListResponse, XAudienceResponse, XAudienceUser,
+)
 ```
 
 ## License
