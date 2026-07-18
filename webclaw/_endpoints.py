@@ -21,6 +21,11 @@ from .types import (
     DiscoveredEndpoint,
     EndpointsResponse,
     ExtractResponse,
+    LeadBatchJob,
+    LeadBatchResult,
+    LeadBatchStatus,
+    LeadData,
+    LeadResponse,
     MapResponse,
     ResearchStatusResponse,
     ScrapeResponse,
@@ -28,11 +33,28 @@ from .types import (
     WatchCheckResponse,
     WatchEntry,
     WatchListResponse,
+    XAudienceResponse,
+    XAudienceUser,
+    XMonitor,
+    XMonitorListResponse,
     YouTubeData,
 )
 
 DEFAULT_BASE_URL = "https://api.webclaw.io"
 DEFAULT_TIMEOUT = 30.0
+
+# X (Twitter) monitoring paths. Collected here so the two clients share one
+# spelling of every route -- mirrors how the watch endpoints are wired.
+X_MONITORS_PATH = "/v1/x/monitors"
+X_AUDIENCE_PATH = "/v1/x/audience"
+
+
+def x_monitor_path(monitor_id: str) -> str:
+    return f"{X_MONITORS_PATH}/{monitor_id}"
+
+
+def x_monitor_check_path(monitor_id: str) -> str:
+    return f"{X_MONITORS_PATH}/{monitor_id}/check"
 
 # Job lifecycle states shared by crawl and research polling.
 #
@@ -124,6 +146,32 @@ def build_extract_body(
     return body
 
 
+def build_lead_body(
+    url: str,
+    *,
+    no_cache: bool = False,
+) -> dict[str, Any]:
+    # `no_cache` is omitted at its default, mirroring build_scrape_body.
+    body: dict[str, Any] = {"url": url}
+    if no_cache:
+        body["no_cache"] = True
+    return body
+
+
+def build_lead_batch_body(
+    urls: list[str],
+    *,
+    no_cache: bool = False,
+) -> dict[str, Any]:
+    # `no_cache` is omitted at its default, mirroring build_lead_body. The
+    # server validates the 1..25 count and dedupes, so the SDK sends urls
+    # through unchanged.
+    body: dict[str, Any] = {"urls": urls}
+    if no_cache:
+        body["no_cache"] = True
+    return body
+
+
 def build_summarize_body(
     url: str,
     *,
@@ -196,6 +244,90 @@ def build_watch_create_body(
         body["name"] = name
     if webhook_url is not None:
         body["webhook_url"] = webhook_url
+    return body
+
+
+def build_x_monitor_create_body(
+    kind: str,
+    target: str,
+    *,
+    name: str | None = None,
+    interval_minutes: int | None = None,
+    webhook_url: str | None = None,
+    include_retweets: bool | None = None,
+    include_replies: bool | None = None,
+    include_quotes: bool | None = None,
+    min_faves: int | None = None,
+    keyword: str | None = None,
+    lang: str | None = None,
+) -> dict[str, Any]:
+    # `kind` and `target` are the only required fields; every filter is
+    # omitted when left at its Python default (None) so the server applies
+    # its own default rather than the SDK second-guessing it. `interval_minutes`
+    # is likewise server-defaulted (15, clamped 2..10080) when not passed.
+    body: dict[str, Any] = {"kind": kind, "target": target}
+    if name is not None:
+        body["name"] = name
+    if interval_minutes is not None:
+        body["interval_minutes"] = interval_minutes
+    if webhook_url is not None:
+        body["webhook_url"] = webhook_url
+    if include_retweets is not None:
+        body["include_retweets"] = include_retweets
+    if include_replies is not None:
+        body["include_replies"] = include_replies
+    if include_quotes is not None:
+        body["include_quotes"] = include_quotes
+    if min_faves is not None:
+        body["min_faves"] = min_faves
+    if keyword is not None:
+        body["keyword"] = keyword
+    if lang is not None:
+        body["lang"] = lang
+    return body
+
+
+def build_x_monitor_update_body(
+    *,
+    name: str | None = None,
+    interval_minutes: int | None = None,
+    webhook_url: str | None = None,
+    active: bool | None = None,
+) -> dict[str, Any]:
+    # PATCH is a partial update: only send the fields the caller actually set.
+    body: dict[str, Any] = {}
+    if name is not None:
+        body["name"] = name
+    if interval_minutes is not None:
+        body["interval_minutes"] = interval_minutes
+    if webhook_url is not None:
+        body["webhook_url"] = webhook_url
+    if active is not None:
+        body["active"] = active
+    return body
+
+
+def build_x_audience_body(
+    *,
+    handle: str | None = None,
+    user_id: str | None = None,
+    direction: str | None = None,
+    cursor: str | None = None,
+    max_pages: int | None = None,
+) -> dict[str, Any]:
+    # Every field is optional server-side; `handle` OR `user_id` identifies
+    # the account (user_id skips the unbilled re-resolve on later pages).
+    body: dict[str, Any] = {}
+    if handle is not None:
+        body["handle"] = handle
+    if user_id is not None:
+        body["user_id"] = user_id
+    if direction is not None:
+        body["direction"] = direction
+    if cursor is not None:
+        body["cursor"] = cursor
+    if max_pages is not None:
+        body["max_pages"] = max_pages
     return body
 
 
@@ -310,6 +442,45 @@ def parse_extract(data: dict[str, Any]) -> ExtractResponse:
     return ExtractResponse(data=data.get("data"))
 
 
+def parse_lead(data: dict[str, Any]) -> LeadResponse:
+    raw_lead = data.get("lead")
+    lead = LeadData.from_dict(raw_lead if isinstance(raw_lead, dict) else {})
+    return LeadResponse(
+        url=data.get("url", ""),
+        domain=data.get("domain", ""),
+        lead=lead,
+        people_source=data.get("people_source", ""),
+        cache=data.get("cache", ""),
+        credits=data.get("credits", 0),
+    )
+
+
+def parse_lead_batch_job(data: dict[str, Any]) -> LeadBatchJob:
+    return LeadBatchJob(
+        id=_require(data, "id", context="lead batch job"),
+        status=_require(data, "status", context="lead batch job"),
+        total=data.get("total", 0),
+        credits_per_url=data.get("credits_per_url", 0),
+    )
+
+
+def parse_lead_batch_status(data: dict[str, Any]) -> LeadBatchStatus:
+    results = [
+        LeadBatchResult.from_dict(r) for r in data.get("results", []) if isinstance(r, dict)
+    ]
+    return LeadBatchStatus(
+        id=_require(data, "id", context="lead batch status"),
+        status=_require(data, "status", context="lead batch status"),
+        total=data.get("total", 0),
+        completed=data.get("completed", 0),
+        succeeded=data.get("succeeded", 0),
+        credits_charged=data.get("credits_charged", 0),
+        results=results,
+        error=data.get("error"),
+        created_at=data.get("created_at", ""),
+    )
+
+
 def parse_summarize(data: dict[str, Any]) -> SummarizeResponse:
     return SummarizeResponse(summary=data.get("summary", ""))
 
@@ -362,4 +533,32 @@ def parse_watch_check(data: dict[str, Any]) -> WatchCheckResponse:
         has_changed=data.get("has_changed", False),
         diff=data.get("diff"),
         checked_at=data.get("checked_at", ""),
+    )
+
+
+def parse_x_monitor(data: dict[str, Any]) -> XMonitor:
+    return XMonitor.from_dict(data)
+
+
+def parse_x_monitor_list(data: dict[str, Any]) -> XMonitorListResponse:
+    monitors = [
+        XMonitor.from_dict(m) for m in data.get("monitors", []) if isinstance(m, dict)
+    ]
+    return XMonitorListResponse(monitors=monitors)
+
+
+def parse_x_audience(data: dict[str, Any]) -> XAudienceResponse:
+    users = [
+        XAudienceUser.from_dict(u) for u in data.get("users", []) if isinstance(u, dict)
+    ]
+    return XAudienceResponse(
+        user_id=data.get("user_id", ""),
+        direction=data.get("direction", "followers"),
+        count=data.get("count", len(users)),
+        users=users,
+        # next_cursor is explicitly nullable: null means the audience is fully
+        # walked, so default to None (not "") to preserve that signal.
+        next_cursor=data.get("next_cursor"),
+        pages_fetched=data.get("pages_fetched", 0),
+        credits_charged=data.get("credits_charged", 0),
     )

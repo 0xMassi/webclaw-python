@@ -24,8 +24,10 @@ from .client import (
 from .errors import TimeoutError, WebclawError
 from .types import (
     BatchResponse, BrandResponse, CrawlStatus, EndpointsResponse,
-    ExtractResponse, MapResponse, ResearchStatusResponse, ScrapeResponse,
-    SummarizeResponse, WatchCheckResponse, WatchEntry, WatchListResponse,
+    ExtractResponse, LeadBatchJob, LeadBatchStatus, LeadResponse, MapResponse,
+    ResearchStatusResponse, ScrapeResponse, SummarizeResponse,
+    WatchCheckResponse, WatchEntry, WatchListResponse, XAudienceResponse,
+    XMonitor, XMonitorListResponse,
 )
 
 
@@ -135,6 +137,46 @@ class AsyncWebclaw:
         """LLM-powered structured data extraction."""
         body = ep.build_extract_body(url, schema=schema, prompt=prompt)
         return ep.parse_extract(await self._request("POST", "/v1/extract", json=body))
+
+    async def lead(self, url: str, *, no_cache: bool = False) -> LeadResponse:
+        """Enrich a company from its website into a structured lead.
+
+        Async mirror of :meth:`Webclaw.lead`. Flat 100 credits per successful
+        lead.
+        """
+        body = ep.build_lead_body(url, no_cache=no_cache)
+        return ep.parse_lead(await self._request("POST", "/v1/lead", json=body))
+
+    async def lead_batch(self, urls: list[str], *, no_cache: bool = False) -> LeadBatchJob:
+        """Start an async batch lead-enrichment job for 1..25 company URLs.
+
+        Async mirror of :meth:`Webclaw.lead_batch`. Returns immediately with a
+        job id; poll :meth:`get_lead_batch` or await :meth:`wait_for_lead_batch`
+        until the status is ``"completed"`` or ``"failed"``. Billed 100 credits
+        per *successful* lead -- error results are not charged.
+        """
+        body = ep.build_lead_batch_body(urls, no_cache=no_cache)
+        return ep.parse_lead_batch_job(await self._request("POST", "/v1/lead/batch", json=body))
+
+    async def get_lead_batch(self, job_id: str) -> LeadBatchStatus:
+        """Get status/results of a lead batch job without polling."""
+        return ep.parse_lead_batch_status(await self._request("GET", f"/v1/lead/batch/{job_id}"))
+
+    async def wait_for_lead_batch(
+        self, job_id: str, *, interval: float = 2.0, timeout: float = 600.0,
+    ) -> LeadBatchStatus:
+        """Poll an existing lead batch job by id until it completes or fails.
+
+        Async mirror of :meth:`Webclaw.wait_for_lead_batch` /
+        :meth:`wait_for_research` / :meth:`wait_for_crawl`.
+        """
+        return await _async_poll_until_done(
+            fetcher=lambda: self._request("GET", f"/v1/lead/batch/{job_id}"),
+            parser=ep.parse_lead_batch_status,
+            label=f"Lead batch {job_id}",
+            interval=interval,
+            timeout=timeout,
+        )
 
     async def summarize(self, url: str, *, max_sentences: int | None = None) -> SummarizeResponse:
         """Summarize page content."""
@@ -253,6 +295,94 @@ class AsyncWebclaw:
     async def watch_check(self, watch_id: str) -> WatchCheckResponse:
         """Trigger an immediate check for a watch monitor."""
         return ep.parse_watch_check(await self._request("POST", f"/v1/watch/{watch_id}/check"))
+
+    # -- X (Twitter) monitoring -----------------------------------------------
+    #
+    # Async mirror of the sync X endpoints. The X analog of watch: a monitor
+    # polls X on a schedule and fires a webhook on new matches. Paid-only --
+    # the server returns 403 (AuthenticationError) for free/lapsed accounts.
+    # Monitors cost 1 credit per check; audience export 1 credit per page.
+
+    async def create_x_monitor(
+        self,
+        kind: str,
+        target: str,
+        *,
+        name: str | None = None,
+        interval_minutes: int | None = None,
+        webhook_url: str | None = None,
+        include_retweets: bool | None = None,
+        include_replies: bool | None = None,
+        include_quotes: bool | None = None,
+        min_faves: int | None = None,
+        keyword: str | None = None,
+        lang: str | None = None,
+    ) -> XMonitor:
+        """Create an X monitor that polls X and fires a webhook on new matches.
+
+        See :meth:`Webclaw.create_x_monitor` for parameter semantics.
+        """
+        body = ep.build_x_monitor_create_body(
+            kind, target, name=name, interval_minutes=interval_minutes,
+            webhook_url=webhook_url, include_retweets=include_retweets,
+            include_replies=include_replies, include_quotes=include_quotes,
+            min_faves=min_faves, keyword=keyword, lang=lang,
+        )
+        return ep.parse_x_monitor(await self._request("POST", ep.X_MONITORS_PATH, json=body))
+
+    async def list_x_monitors(self, *, limit: int = 50, offset: int = 0) -> XMonitorListResponse:
+        """List X monitors (each a full monitor object)."""
+        return ep.parse_x_monitor_list(
+            await self._request("GET", ep.X_MONITORS_PATH, params={"limit": limit, "offset": offset})
+        )
+
+    async def get_x_monitor(self, monitor_id: str) -> XMonitor:
+        """Get a single X monitor by id (full monitor object)."""
+        return ep.parse_x_monitor(await self._request("GET", ep.x_monitor_path(monitor_id)))
+
+    async def update_x_monitor(
+        self,
+        monitor_id: str,
+        *,
+        name: str | None = None,
+        interval_minutes: int | None = None,
+        webhook_url: str | None = None,
+        active: bool | None = None,
+    ) -> None:
+        """Update an X monitor. Only the fields you pass are changed."""
+        body = ep.build_x_monitor_update_body(
+            name=name, interval_minutes=interval_minutes,
+            webhook_url=webhook_url, active=active,
+        )
+        await self._request("PATCH", ep.x_monitor_path(monitor_id), json=body)
+
+    async def delete_x_monitor(self, monitor_id: str) -> None:
+        """Delete an X monitor."""
+        await self._request("DELETE", ep.x_monitor_path(monitor_id))
+
+    async def check_x_monitor(self, monitor_id: str) -> None:
+        """Trigger an immediate background check for an X monitor (1 credit)."""
+        await self._request("POST", ep.x_monitor_check_path(monitor_id))
+
+    async def export_x_audience(
+        self,
+        *,
+        handle: str | None = None,
+        user_id: str | None = None,
+        direction: str | None = None,
+        cursor: str | None = None,
+        max_pages: int | None = None,
+    ) -> XAudienceResponse:
+        """Export an account's followers or following, cursor-paginated.
+
+        See :meth:`Webclaw.export_x_audience` for parameter semantics and the
+        full-audience paging loop.
+        """
+        body = ep.build_x_audience_body(
+            handle=handle, user_id=user_id, direction=direction,
+            cursor=cursor, max_pages=max_pages,
+        )
+        return ep.parse_x_audience(await self._request("POST", ep.X_AUDIENCE_PATH, json=body))
 
 
 class AsyncCrawlJobHandle:
