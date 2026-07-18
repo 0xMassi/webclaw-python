@@ -21,6 +21,11 @@ from .types import (
     DiscoveredEndpoint,
     EndpointsResponse,
     ExtractResponse,
+    LeadBatchJob,
+    LeadBatchResult,
+    LeadBatchStatus,
+    LeadData,
+    LeadResponse,
     MapResponse,
     ResearchStatusResponse,
     ScrapeResponse,
@@ -138,6 +143,32 @@ def build_extract_body(
         body["schema"] = schema
     if prompt is not None:
         body["prompt"] = prompt
+    return body
+
+
+def build_lead_body(
+    url: str,
+    *,
+    no_cache: bool = False,
+) -> dict[str, Any]:
+    # `no_cache` is omitted at its default, mirroring build_scrape_body.
+    body: dict[str, Any] = {"url": url}
+    if no_cache:
+        body["no_cache"] = True
+    return body
+
+
+def build_lead_batch_body(
+    urls: list[str],
+    *,
+    no_cache: bool = False,
+) -> dict[str, Any]:
+    # `no_cache` is omitted at its default, mirroring build_lead_body. The
+    # server validates the 1..25 count and dedupes, so the SDK sends urls
+    # through unchanged.
+    body: dict[str, Any] = {"urls": urls}
+    if no_cache:
+        body["no_cache"] = True
     return body
 
 
@@ -409,6 +440,45 @@ def parse_batch(data: dict[str, Any]) -> BatchResponse:
 
 def parse_extract(data: dict[str, Any]) -> ExtractResponse:
     return ExtractResponse(data=data.get("data"))
+
+
+def parse_lead(data: dict[str, Any]) -> LeadResponse:
+    raw_lead = data.get("lead")
+    lead = LeadData.from_dict(raw_lead if isinstance(raw_lead, dict) else {})
+    return LeadResponse(
+        url=data.get("url", ""),
+        domain=data.get("domain", ""),
+        lead=lead,
+        people_source=data.get("people_source", ""),
+        cache=data.get("cache", ""),
+        credits=data.get("credits", 0),
+    )
+
+
+def parse_lead_batch_job(data: dict[str, Any]) -> LeadBatchJob:
+    return LeadBatchJob(
+        id=_require(data, "id", context="lead batch job"),
+        status=_require(data, "status", context="lead batch job"),
+        total=data.get("total", 0),
+        credits_per_url=data.get("credits_per_url", 0),
+    )
+
+
+def parse_lead_batch_status(data: dict[str, Any]) -> LeadBatchStatus:
+    results = [
+        LeadBatchResult.from_dict(r) for r in data.get("results", []) if isinstance(r, dict)
+    ]
+    return LeadBatchStatus(
+        id=_require(data, "id", context="lead batch status"),
+        status=_require(data, "status", context="lead batch status"),
+        total=data.get("total", 0),
+        completed=data.get("completed", 0),
+        succeeded=data.get("succeeded", 0),
+        credits_charged=data.get("credits_charged", 0),
+        results=results,
+        error=data.get("error"),
+        created_at=data.get("created_at", ""),
+    )
 
 
 def parse_summarize(data: dict[str, Any]) -> SummarizeResponse:

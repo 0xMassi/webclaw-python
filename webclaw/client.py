@@ -12,9 +12,10 @@ from . import _endpoints as ep
 from .errors import AuthenticationError, NotFoundError, RateLimitError, TimeoutError, WebclawError
 from .types import (
     BatchResponse, BrandResponse, CrawlStatus, EndpointsResponse,
-    ExtractResponse, MapResponse, ResearchStatusResponse, ScrapeResponse,
-    SummarizeResponse, WatchCheckResponse, WatchEntry, WatchListResponse,
-    XAudienceResponse, XMonitor, XMonitorListResponse,
+    ExtractResponse, LeadBatchJob, LeadBatchStatus, LeadResponse, MapResponse,
+    ResearchStatusResponse, ScrapeResponse, SummarizeResponse,
+    WatchCheckResponse, WatchEntry, WatchListResponse, XAudienceResponse,
+    XMonitor, XMonitorListResponse,
 )
 
 
@@ -132,6 +133,50 @@ class Webclaw:
         """LLM-powered structured data extraction."""
         body = ep.build_extract_body(url, schema=schema, prompt=prompt)
         return ep.parse_extract(self._request("POST", "/v1/extract", json=body))
+
+    def lead(self, url: str, *, no_cache: bool = False) -> LeadResponse:
+        """Enrich a company from its website into a structured lead.
+
+        Returns the company name, summary, socials, tech stack, pricing,
+        emails, and people (each with optional LinkedIn / X profile URLs).
+
+        Flat 100 credits per successful lead.
+        """
+        body = ep.build_lead_body(url, no_cache=no_cache)
+        return ep.parse_lead(self._request("POST", "/v1/lead", json=body))
+
+    def lead_batch(self, urls: list[str], *, no_cache: bool = False) -> LeadBatchJob:
+        """Start an async batch lead-enrichment job for 1..25 company URLs.
+
+        Returns immediately with a job id and status ``"processing"``; poll
+        :meth:`get_lead_batch` (or block with :meth:`wait_for_lead_batch`)
+        until the status is ``"completed"`` or ``"failed"``. The server
+        validates the count (400 for zero or more than 25) and dedupes the
+        list. Billed 100 credits per *successful* lead -- error results are
+        not charged.
+        """
+        body = ep.build_lead_batch_body(urls, no_cache=no_cache)
+        return ep.parse_lead_batch_job(self._request("POST", "/v1/lead/batch", json=body))
+
+    def get_lead_batch(self, job_id: str) -> LeadBatchStatus:
+        """Get status/results of a lead batch job without polling."""
+        return ep.parse_lead_batch_status(self._request("GET", f"/v1/lead/batch/{job_id}"))
+
+    def wait_for_lead_batch(
+        self, job_id: str, *, interval: float = 2.0, timeout: float = 600.0,
+    ) -> LeadBatchStatus:
+        """Poll an existing lead batch job by id until it completes or fails.
+
+        Mirrors :meth:`wait_for_research` / :meth:`wait_for_crawl`: same
+        capped backoff and terminal/unknown-status fail-fast behaviour.
+        """
+        return _poll_until_done(
+            fetcher=lambda: self._request("GET", f"/v1/lead/batch/{job_id}"),
+            parser=ep.parse_lead_batch_status,
+            label=f"Lead batch {job_id}",
+            interval=interval,
+            timeout=timeout,
+        )
 
     def summarize(self, url: str, *, max_sentences: int | None = None) -> SummarizeResponse:
         """Summarize page content."""

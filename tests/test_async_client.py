@@ -245,6 +245,190 @@ async def test_extract(client: AsyncWebclaw):
     assert result.data["price"] == "$10"
 
 
+# -- lead ---------------------------------------------------------------------
+
+
+@respx.mock
+async def test_lead(client: AsyncWebclaw):
+    route = respx.post(f"{BASE}/v1/lead").mock(
+        return_value=httpx.Response(200, json={
+            "url": "https://posthog.com",
+            "domain": "posthog.com",
+            "lead": {
+                "company_name": "PostHog",
+                "socials": {"github": "https://github.com/PostHog"},
+                "tech": ["Django", "ClickHouse"],
+                "pricing": [{"plan": "Free", "price": "$0"}],
+                "emails": [{"type": "support", "email": "hey@posthog.com"}],
+                "people": [
+                    {
+                        "name": "James Hawkins",
+                        "role": "CEO",
+                        "linkedin": "https://linkedin.com/in/james-hawkins",
+                        "x": None,
+                    },
+                ],
+            },
+            "people_source": "team_page",
+            "cache": "miss",
+            "credits": 100,
+        })
+    )
+    result = await client.lead("https://posthog.com")
+
+    import json
+    payload = json.loads(route.calls.last.request.read())
+    assert payload == {"url": "https://posthog.com"}
+
+    assert result.domain == "posthog.com"
+    assert result.lead.company_name == "PostHog"
+    assert result.lead.socials.github == "https://github.com/PostHog"
+    assert result.lead.pricing[0].plan == "Free"
+    assert result.lead.emails[0].email == "hey@posthog.com"
+    assert result.lead.people[0].role == "CEO"
+    assert result.lead.people[0].linkedin == "https://linkedin.com/in/james-hawkins"
+    assert result.lead.people[0].x is None
+    assert result.people_source == "team_page"
+    assert result.cache == "miss"
+    assert result.credits == 100
+
+
+# -- lead batch ---------------------------------------------------------------
+
+
+@respx.mock
+async def test_lead_batch_start(client: AsyncWebclaw):
+    route = respx.post(f"{BASE}/v1/lead/batch").mock(
+        return_value=httpx.Response(200, json={
+            "id": "alb-1", "status": "processing", "total": 2, "credits_per_url": 100,
+        })
+    )
+    job = await client.lead_batch(["https://posthog.com", "https://vercel.com"])
+    assert job.id == "alb-1"
+    assert job.status == "processing"
+    assert job.total == 2
+    assert job.credits_per_url == 100
+
+    import json
+    payload = json.loads(route.calls.last.request.read())
+    assert payload == {"urls": ["https://posthog.com", "https://vercel.com"]}
+
+
+@respx.mock
+async def test_lead_batch_sends_no_cache_when_true(client: AsyncWebclaw):
+    route = respx.post(f"{BASE}/v1/lead/batch").mock(
+        return_value=httpx.Response(200, json={
+            "id": "alb-2", "status": "processing", "total": 1, "credits_per_url": 100,
+        })
+    )
+    await client.lead_batch(["https://example.com"], no_cache=True)
+    import json
+    payload = json.loads(route.calls.last.request.read())
+    assert payload["no_cache"] is True
+
+
+@respx.mock
+async def test_lead_batch_402(client: AsyncWebclaw):
+    respx.post(f"{BASE}/v1/lead/batch").mock(
+        return_value=httpx.Response(402, json={"error": "insufficient credits"})
+    )
+    with pytest.raises(WebclawError, match="insufficient credits") as exc:
+        await client.lead_batch(["https://example.com"])
+    assert exc.value.status_code == 402
+
+
+@respx.mock
+async def test_get_lead_batch(client: AsyncWebclaw):
+    respx.get(f"{BASE}/v1/lead/batch/alb-9").mock(
+        return_value=httpx.Response(200, json={
+            "id": "alb-9",
+            "status": "completed",
+            "total": 2,
+            "completed": 2,
+            "succeeded": 1,
+            "credits_charged": 100,
+            "results": [
+                {
+                    "url": "https://posthog.com",
+                    "status": "success",
+                    "domain": "posthog.com",
+                    "cache": "hit",
+                    "lead": {
+                        "company_name": "PostHog",
+                        "people": [{"name": "James Hawkins", "role": "CEO"}],
+                    },
+                },
+                {"url": "https://broken.example", "status": "error", "error": "unreachable"},
+            ],
+            "error": None,
+            "created_at": "2026-07-18T10:00:00Z",
+        })
+    )
+    status = await client.get_lead_batch("alb-9")
+    assert status.status == "completed"
+    assert status.succeeded == 1
+    assert status.credits_charged == 100
+    ok, bad = status.results
+    assert ok.status == "success"
+    assert ok.cache == "hit"
+    assert ok.lead is not None
+    assert ok.lead.company_name == "PostHog"
+    assert ok.lead.people[0].role == "CEO"
+    assert bad.status == "error"
+    assert bad.error == "unreachable"
+    assert bad.lead is None
+
+
+@respx.mock
+async def test_get_lead_batch_404(client: AsyncWebclaw):
+    respx.get(f"{BASE}/v1/lead/batch/nope").mock(
+        return_value=httpx.Response(404, json={"error": "not found"})
+    )
+    with pytest.raises(NotFoundError):
+        await client.get_lead_batch("nope")
+
+
+@respx.mock
+async def test_wait_for_lead_batch(client: AsyncWebclaw):
+    call = {"n": 0}
+
+    def respond(request):
+        call["n"] += 1
+        if call["n"] < 2:
+            return httpx.Response(200, json={
+                "id": "alb-w", "status": "processing",
+                "total": 1, "completed": 0, "succeeded": 0,
+                "credits_charged": 0, "results": [],
+            })
+        return httpx.Response(200, json={
+            "id": "alb-w", "status": "completed",
+            "total": 1, "completed": 1, "succeeded": 1, "credits_charged": 100,
+            "results": [
+                {"url": "https://a.com", "status": "success", "domain": "a.com",
+                 "cache": "miss", "lead": {"company_name": "A"}},
+            ],
+        })
+
+    respx.get(f"{BASE}/v1/lead/batch/alb-w").mock(side_effect=respond)
+    status = await client.wait_for_lead_batch("alb-w", interval=0.01, timeout=5.0)
+    assert status.status == "completed"
+    assert status.results[0].lead.company_name == "A"
+    assert call["n"] == 2
+
+
+@respx.mock
+async def test_wait_for_lead_batch_failed_fails_fast(client: AsyncWebclaw):
+    respx.get(f"{BASE}/v1/lead/batch/alb-f").mock(
+        return_value=httpx.Response(200, json={
+            "id": "alb-f", "status": "failed", "error": "boom",
+            "total": 1, "completed": 0, "succeeded": 0, "credits_charged": 0,
+            "results": [],
+        })
+    )
+    with pytest.raises(WebclawError, match="boom"):
+        await client.wait_for_lead_batch("alb-f", interval=0.01, timeout=5.0)
+
+
 # -- summarize ----------------------------------------------------------------
 
 

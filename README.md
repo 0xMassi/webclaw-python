@@ -204,6 +204,36 @@ result = client.extract(
 print(result.data)
 ```
 
+### Lead Enrichment API
+
+Enrich a company from its website into a structured lead: company name,
+summary, socials, tech stack, pricing, emails, and people (each with optional
+LinkedIn / X profile URLs). Flat **100 credits per successful lead**.
+
+```python
+result = client.lead("https://resend.com")
+
+print(result.domain)                 # "resend.com"
+print(result.lead.company_name)      # "Resend"
+print(result.lead.summary)           # "Email API for developers."
+print(result.lead.socials.github)    # "https://github.com/resend"
+print(result.lead.tech)              # ["Next.js", "React", "Vercel", ...]
+
+for plan in result.lead.pricing:
+    print(plan.plan, plan.price)     # LeadPricingPlan(plan=..., price=...)
+
+for email in result.lead.emails:
+    print(email.type, email.email)   # LeadEmail(type="support", email="...")
+
+for person in result.lead.people:
+    print(person.name, person.role)  # LeadPerson(name=..., role=...)
+    print(person.linkedin, person.x) # profile URLs, or None if absent
+
+print(result.people_source)          # e.g. "team_page"
+print(result.cache)                  # "hit" | "miss"
+print(result.credits)                # 100
+```
+
 ### Summarize
 
 Summarize page content with an optional sentence limit.
@@ -525,7 +555,7 @@ This package ships with a `py.typed` marker (PEP 561). Type checkers like mypy a
 ```python
 from webclaw import (
     ScrapeResponse, CrawlStatus, MapResponse, ExtractResponse, EndpointsResponse,
-    XMonitor, XMonitorListResponse, XAudienceResponse, XAudienceUser,
+    LeadResponse, XMonitor, XMonitorListResponse, XAudienceResponse, XAudienceUser,
 )
 ```
 

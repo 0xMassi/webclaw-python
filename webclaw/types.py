@@ -119,6 +119,181 @@ class ExtractResponse:
     data: Any = None
 
 
+# -- Lead --------------------------------------------------------------------
+#
+# `/v1/lead` enriches a company from its website into a structured lead:
+# company name, summary, socials, tech stack, pricing, emails, and people.
+# Flat 100 credits per successful lead.
+
+@dataclass
+class LeadSocials:
+    """Social profile URLs discovered for the company."""
+    linkedin: str | None = None
+    x: str | None = None
+    github: str | None = None
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> LeadSocials:
+        return LeadSocials(
+            linkedin=data.get("linkedin"),
+            x=data.get("x"),
+            github=data.get("github"),
+        )
+
+
+@dataclass
+class LeadPricingPlan:
+    """A single pricing plan and its price string."""
+    plan: str = ""
+    price: str = ""
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> LeadPricingPlan:
+        return LeadPricingPlan(
+            plan=data.get("plan", ""),
+            price=data.get("price", ""),
+        )
+
+
+@dataclass
+class LeadEmail:
+    """A discovered contact email, tagged by its role (e.g. "support")."""
+    type: str = ""
+    email: str = ""
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> LeadEmail:
+        return LeadEmail(
+            type=data.get("type", ""),
+            email=data.get("email", ""),
+        )
+
+
+@dataclass
+class LeadPerson:
+    """A person associated with the company: name, role, and optional
+    LinkedIn / X profile URLs (either may be absent)."""
+    name: str = ""
+    role: str = ""
+    linkedin: str | None = None
+    x: str | None = None
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> LeadPerson:
+        return LeadPerson(
+            name=data.get("name", ""),
+            role=data.get("role", ""),
+            linkedin=data.get("linkedin"),
+            x=data.get("x"),
+        )
+
+
+@dataclass
+class LeadData:
+    """The enriched company profile inside a LeadResponse."""
+    company_name: str | None = None
+    summary: str | None = None
+    socials: LeadSocials = field(default_factory=LeadSocials)
+    tech: list[str] = field(default_factory=list)
+    pricing: list[LeadPricingPlan] = field(default_factory=list)
+    emails: list[LeadEmail] = field(default_factory=list)
+    people: list[LeadPerson] = field(default_factory=list)
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> LeadData:
+        raw_socials = data.get("socials")
+        socials = LeadSocials.from_dict(raw_socials if isinstance(raw_socials, dict) else {})
+        pricing = [
+            LeadPricingPlan.from_dict(p) for p in data.get("pricing", []) if isinstance(p, dict)
+        ]
+        emails = [
+            LeadEmail.from_dict(e) for e in data.get("emails", []) if isinstance(e, dict)
+        ]
+        people = [
+            LeadPerson.from_dict(p) for p in data.get("people", []) if isinstance(p, dict)
+        ]
+        return LeadData(
+            company_name=data.get("company_name"),
+            summary=data.get("summary"),
+            socials=socials,
+            tech=list(data.get("tech") or []),
+            pricing=pricing,
+            emails=emails,
+            people=people,
+        )
+
+
+@dataclass
+class LeadResponse:
+    """Company enrichment from `/v1/lead`. Flat 100 credits per successful lead."""
+    url: str = ""
+    domain: str = ""
+    lead: LeadData = field(default_factory=LeadData)
+    people_source: str = ""
+    cache: str = ""  # "hit" | "miss"
+    credits: int = 0
+
+
+# -- Lead batch --------------------------------------------------------------
+#
+# `/v1/lead/batch` enriches 1..25 company websites in one ASYNC job. POST
+# returns immediately with a job id; poll `GET /v1/lead/batch/{id}` until the
+# status is "completed" or "failed". 100 credits per *successful* lead --
+# error results are not billed.
+
+@dataclass
+class LeadBatchJob:
+    """Returned immediately when a lead batch job is started."""
+    id: str = ""
+    status: str = ""  # "processing"
+    total: int = 0
+    credits_per_url: int = 0
+
+
+@dataclass
+class LeadBatchResult:
+    """One URL's outcome inside a LeadBatchStatus.
+
+    On success `status == "success"` and `domain` / `lead` / `cache` are
+    populated (`lead` is the same enriched profile `LeadResponse.lead`
+    carries). On failure `status == "error"` and `error` holds the reason
+    while `lead` is None."""
+    url: str = ""
+    status: str = ""  # "success" | "error"
+    domain: str = ""
+    lead: LeadData | None = None
+    cache: str = ""  # "hit" | "miss"
+    error: str | None = None
+
+    @staticmethod
+    def from_dict(data: dict[str, Any]) -> LeadBatchResult:
+        raw_lead = data.get("lead")
+        lead = LeadData.from_dict(raw_lead) if isinstance(raw_lead, dict) else None
+        return LeadBatchResult(
+            url=data.get("url", ""),
+            status=data.get("status", ""),
+            domain=data.get("domain", ""),
+            lead=lead,
+            cache=data.get("cache", ""),
+            error=data.get("error"),
+        )
+
+
+@dataclass
+class LeadBatchStatus:
+    """Full lead batch job status including per-URL results. `credits_charged`
+    reflects only the successful leads (100 credits each)."""
+    id: str = ""
+    status: str = ""  # "processing" | "completed" | "failed"
+    total: int = 0
+    completed: int = 0
+    succeeded: int = 0
+    credits_charged: int = 0
+    results: list[LeadBatchResult] = field(default_factory=list)
+    error: str | None = None
+    created_at: str = ""
+
+
 # -- Summarize ---------------------------------------------------------------
 
 @dataclass
