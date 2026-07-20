@@ -269,11 +269,10 @@ print(result.data)  # dict with brand identity fields
 Deep research that searches, reads, and synthesizes information from multiple sources. This is an async job: the SDK starts it and polls until completion.
 
 ```python
-# Blocks until research completes (up to 600s, or 1200s with deep=True)
+# Blocks until research completes (up to 1200s)
 result = client.research(
     "How do modern web crawlers handle JavaScript rendering?",
     max_sources=15,
-    deep=True,
     topic="tech",
 )
 
@@ -292,7 +291,7 @@ status = client.get_research_status("job-id-here")
 print(status.status)  # "running" | "completed" | "failed"
 ```
 
-**Parameters:** `query` (str), `deep` (bool, default False), `max_sources` (int, optional), `max_iterations` (int, optional), `topic` (str, optional).
+**Parameters:** `query` (str), `max_sources` (int, optional), `max_iterations` (int, optional), `topic` (str, optional), `deep` (bool, **deprecated** — every research job runs in deep mode; the flag is ignored and passing `deep=True` emits a `DeprecationWarning`).
 
 ### Crawl
 

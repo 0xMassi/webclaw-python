@@ -205,7 +205,13 @@ def build_research_body(
     max_iterations: int | None = None,
     topic: str | None = None,
 ) -> dict[str, Any]:
-    body: dict[str, Any] = {"query": query, "deep": deep}
+    # `deep` is deprecated: the server runs every research job in deep mode
+    # and ignores the field. Only forward it when a caller explicitly opts
+    # in (truthy) so default requests stop carrying a dead field, while an
+    # older self-hosted server that still honors it keeps working.
+    body: dict[str, Any] = {"query": query}
+    if deep:
+        body["deep"] = True
     if max_sources is not None:
         body["max_sources"] = max_sources
     if max_iterations is not None:

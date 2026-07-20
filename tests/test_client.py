@@ -1021,6 +1021,83 @@ def test_wait_for_research(client: Webclaw):
     assert call["n"] == 2
 
 
+# -- deprecated `deep` parameter ----------------------------------------------
+
+
+def _mock_research_job(job_id: str):
+    respx.post(f"{BASE}/v1/research").mock(
+        return_value=httpx.Response(200, json={"id": job_id})
+    )
+    respx.get(f"{BASE}/v1/research/{job_id}").mock(
+        return_value=httpx.Response(200, json={
+            "id": job_id, "status": "completed", "report": "r",
+        })
+    )
+
+
+@respx.mock
+def test_research_deep_true_warns_and_still_forwards(client: Webclaw):
+    """Explicit deep=True is deprecated: warn, but keep sending the field
+    so older self-hosted servers that still honor it are unaffected."""
+    import json
+
+    _mock_research_job("dep1")
+    with pytest.warns(DeprecationWarning, match="deep.*deprecated"):
+        client.research("q", deep=True)
+    sent = json.loads(respx.calls[0].request.read())
+    assert sent["deep"] is True
+
+
+@respx.mock
+def test_research_default_no_warning_no_deep_field(client: Webclaw):
+    """A caller relying on the default must not be warned, and the body
+    must no longer carry the dead `deep` field."""
+    import json
+    import warnings as warnings_mod
+
+    _mock_research_job("dep2")
+    with warnings_mod.catch_warnings():
+        warnings_mod.simplefilter("error", DeprecationWarning)
+        client.research("q")
+    sent = json.loads(respx.calls[0].request.read())
+    assert "deep" not in sent
+
+
+@respx.mock
+def test_research_explicit_false_no_warning(client: Webclaw):
+    """Explicit deep=False behaves exactly like the default: no warning,
+    no `deep` field on the wire (the server ignores it either way)."""
+    import json
+    import warnings as warnings_mod
+
+    _mock_research_job("dep3")
+    with warnings_mod.catch_warnings():
+        warnings_mod.simplefilter("error", DeprecationWarning)
+        client.research("q", deep=False)
+    sent = json.loads(respx.calls[0].request.read())
+    assert "deep" not in sent
+
+
+@respx.mock
+def test_research_always_uses_deep_timeout(client: Webclaw, monkeypatch):
+    """Every research job runs deep server-side (~20 min); a default caller
+    must get the 1200s poll window, not the old 600s one."""
+    import webclaw.client as wc
+
+    captured: dict = {}
+
+    def fake_poll(**kwargs):
+        captured.update(kwargs)
+        return "sentinel"
+
+    monkeypatch.setattr(wc, "_poll_until_done", fake_poll)
+    respx.post(f"{BASE}/v1/research").mock(
+        return_value=httpx.Response(200, json={"id": "t1"})
+    )
+    assert client.research("q") == "sentinel"
+    assert captured["timeout"] == 1200.0
+
+
 @respx.mock
 def test_wait_for_crawl(client: Webclaw):
     call = {"n": 0}

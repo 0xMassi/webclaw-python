@@ -644,6 +644,39 @@ async def test_wait_for_research(client: AsyncWebclaw):
 
 
 @respx.mock
+async def test_research_deep_true_warns(client: AsyncWebclaw):
+    """Async mirror of the sync deprecation: explicit deep=True warns."""
+    respx.post(f"{BASE}/v1/research").mock(
+        return_value=httpx.Response(200, json={"id": "adep"})
+    )
+    respx.get(f"{BASE}/v1/research/adep").mock(
+        return_value=httpx.Response(200, json={
+            "id": "adep", "status": "completed", "report": "r",
+        })
+    )
+    with pytest.warns(DeprecationWarning, match="deep.*deprecated"):
+        await client.research("q", deep=True)
+
+
+@respx.mock
+async def test_research_default_no_warning(client: AsyncWebclaw):
+    """Default callers must not see a DeprecationWarning."""
+    import warnings as warnings_mod
+
+    respx.post(f"{BASE}/v1/research").mock(
+        return_value=httpx.Response(200, json={"id": "adef"})
+    )
+    respx.get(f"{BASE}/v1/research/adef").mock(
+        return_value=httpx.Response(200, json={
+            "id": "adef", "status": "completed", "report": "r",
+        })
+    )
+    with warnings_mod.catch_warnings():
+        warnings_mod.simplefilter("error", DeprecationWarning)
+        await client.research("q")
+
+
+@respx.mock
 async def test_wait_for_crawl(client: AsyncWebclaw):
     respx.get(f"{BASE}/v1/crawl/awc").mock(
         return_value=httpx.Response(200, json={

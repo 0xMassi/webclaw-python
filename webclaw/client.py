@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import warnings
 from typing import Any, Sequence
 from urllib.parse import quote
 
@@ -232,8 +233,19 @@ class Webclaw:
     ) -> ResearchStatusResponse:
         """Start a research job and block until it completes.
 
-        Normal queries time out after 600s, deep research after 1200s.
+        Jobs time out after 1200s (20 min) -- the server runs every
+        research job in deep mode.
+
+        :param deep: Deprecated and ignored: research always runs in deep
+            mode. Passing ``deep=True`` emits a ``DeprecationWarning``.
         """
+        if deep:
+            warnings.warn(
+                "The 'deep' parameter is deprecated and ignored: "
+                "research always runs in deep mode.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         body = ep.build_research_body(query, deep=deep, max_sources=max_sources, max_iterations=max_iterations, topic=topic)
         job_id = self._request("POST", "/v1/research", json=body)["id"]
         return _poll_until_done(
@@ -241,7 +253,7 @@ class Webclaw:
             parser=ep.parse_research,
             label=f"Research {job_id}",
             interval=2.0,
-            timeout=1200.0 if deep else 600.0,
+            timeout=1200.0,
         )
 
     def get_research_status(self, job_id: str) -> ResearchStatusResponse:
@@ -258,8 +270,9 @@ class Webclaw:
         in another process and you want to block-until-done without
         restarting the job.
 
-        Default timeout is 1200s (20 min), matching the deep-research window
-        on the server side. Override for shorter waits.
+        Default timeout is 1200s (20 min), matching the research window on
+        the server side (every job runs in deep mode). Override for
+        shorter waits.
         """
         return _poll_until_done(
             fetcher=lambda: self._request("GET", f"/v1/research/{job_id}"),
