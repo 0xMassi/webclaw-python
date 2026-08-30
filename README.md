@@ -109,16 +109,38 @@ The `data` field is extractor-specific; call `list_extractors()` to discover wha
 
 ### Search
 
-Web search with optional topic filtering.
+Web search with strict source filters, provider freshness/date/locale hints,
+pagination, and optional scraping of result pages.
 
 ```python
-results = client.search("web scraping tools 2026", num_results=10, topic="tech")
+results = client.search(
+    "website pain points",
+    num_results=10,
+    include_domains=["reddit.com"],
+    include_url_prefixes=["https://www.reddit.com/r/webdesign/comments/"],
+    freshness="month",
+    page=1,
+    location="Austin, Texas, United States",
+    autocorrect=False,
+    scrape=False,
+    country="us",
+    lang="en",
+    no_cache=True,
+)
 
 for r in results["results"]:
     print(r["title"], r["url"])
+
+print(results.get("filtered_out_count"))
+print(results.get("applied_filters"))
 ```
 
-**Parameters:** `query` (str), `num_results` (int, optional), `topic` (str, optional).
+Use `published_after` / `published_before` (`YYYY-MM-DD`) instead of
+`freshness` when you need explicit provider discovery hints;
+`published_before` is exclusive. These hints do not verify a result's actual
+publication date, so inspect the source timestamp when correctness matters.
+`topic` remains accepted for compatibility but is deprecated and ignored by
+the hosted API.
 
 ### Map
 

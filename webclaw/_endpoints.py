@@ -29,6 +29,7 @@ from .types import (
     MapResponse,
     ResearchStatusResponse,
     ScrapeResponse,
+    SearchFreshness,
     SummarizeResponse,
     WatchCheckResponse,
     WatchEntry,
@@ -188,12 +189,57 @@ def build_search_body(
     *,
     num_results: int | None = None,
     topic: str | None = None,
+    scrape: bool | None = None,
+    formats: Sequence[str] | None = None,
+    country: str | None = None,
+    lang: str | None = None,
+    include_domains: Sequence[str] | None = None,
+    exclude_domains: Sequence[str] | None = None,
+    include_url_prefixes: Sequence[str] | None = None,
+    freshness: SearchFreshness | None = None,
+    published_after: str | None = None,
+    published_before: str | None = None,
+    page: int | None = None,
+    location: str | None = None,
+    autocorrect: bool | None = None,
+    no_cache: bool = False,
+    max_cache_age: int | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {"query": query}
     if num_results is not None:
         body["num_results"] = num_results
     if topic is not None:
         body["topic"] = topic
+    if scrape is not None:
+        body["scrape"] = scrape
+    if formats is not None:
+        body["formats"] = list(formats)
+    if country is not None:
+        body["country"] = country
+    if lang is not None:
+        body["lang"] = lang
+    if include_domains is not None:
+        body["include_domains"] = list(include_domains)
+    if exclude_domains is not None:
+        body["exclude_domains"] = list(exclude_domains)
+    if include_url_prefixes is not None:
+        body["include_url_prefixes"] = list(include_url_prefixes)
+    if freshness is not None:
+        body["freshness"] = freshness
+    if published_after is not None:
+        body["published_after"] = published_after
+    if published_before is not None:
+        body["published_before"] = published_before
+    if page is not None:
+        body["page"] = page
+    if location is not None:
+        body["location"] = location
+    if autocorrect is not None:
+        body["autocorrect"] = autocorrect
+    if no_cache:
+        body["no_cache"] = True
+    if max_cache_age is not None:
+        body["max_cache_age"] = max_cache_age
     return body
 
 

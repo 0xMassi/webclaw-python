@@ -600,11 +600,46 @@ async def test_async_poll_backoff_grows(client: AsyncWebclaw, monkeypatch):
 
 @respx.mock
 async def test_search(client: AsyncWebclaw):
-    respx.post(f"{BASE}/v1/search").mock(
-        return_value=httpx.Response(200, json={"query": "q", "results": []})
+    route = respx.post(f"{BASE}/v1/search").mock(
+        return_value=httpx.Response(200, json={
+            "query": "q",
+            "results": [],
+            "applied_filters": {
+                "include_domains": ["reddit.com"],
+            },
+            "filtered_out_count": 0,
+            "page": 1,
+        })
     )
-    out = await client.search("q", num_results=3)
+    out = await client.search(
+        "q",
+        num_results=3,
+        scrape=False,
+        include_domains=["reddit.com"],
+        autocorrect=False,
+    )
     assert out["query"] == "q"
+    import json
+    payload = json.loads(route.calls.last.request.read())
+    assert payload == {
+        "query": "q",
+        "num_results": 3,
+        "scrape": False,
+        "include_domains": ["reddit.com"],
+        "autocorrect": False,
+    }
+
+
+@respx.mock
+async def test_search_deprecated_topic_is_warned_and_forwarded(client: AsyncWebclaw):
+    route = respx.post(f"{BASE}/v1/search").mock(
+        return_value=httpx.Response(200, json={"results": []})
+    )
+    with pytest.warns(DeprecationWarning, match="topic.*deprecated"):
+        await client.search("q", topic="news")
+    import json
+    payload = json.loads(route.calls.last.request.read())
+    assert payload["topic"] == "news"
 
 
 @respx.mock

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 
 # -- Scrape ------------------------------------------------------------------
@@ -310,12 +310,40 @@ class BrandResponse:
 
 
 # -- Search / Diff -----------------------------------------------------------
-#
-# `Webclaw.search()` and `Webclaw.diff()` return the raw server JSON as a
-# `dict`. Typed wrappers used to be exported here but were never produced
-# by any client method, so they advertised a contract the SDK did not
-# honour. They were removed; typing these endpoints is a deliberate
-# public-API change, not an accidental one.
+
+SearchFreshness = Literal["hour", "day", "week", "month", "year"]
+
+
+class SearchAppliedFilters(TypedDict, total=False):
+    """Non-default source filters and provider discovery hints.
+
+    Fields are optional so the SDK remains compatible with older hosted and
+    self-hosted servers while the additive response contract rolls out.
+    """
+
+    include_domains: list[str]
+    exclude_domains: list[str]
+    include_url_prefixes: list[str]
+    freshness: SearchFreshness
+    published_after: str
+    published_before: str
+    location: str
+    autocorrect: bool
+
+
+class SearchResponse(TypedDict, total=False):
+    """Raw JSON returned by :meth:`Webclaw.search`."""
+
+    query: str
+    results: list[dict[str, Any]]
+    scrape: bool
+    applied_filters: SearchAppliedFilters
+    filtered_out_count: int
+    page: int
+
+
+# `Webclaw.diff()` still returns the raw server JSON as a `dict`. Its old
+# dataclass wrapper was never produced by the client and remains removed.
 
 
 # -- Research ----------------------------------------------------------------

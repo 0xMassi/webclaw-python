@@ -929,14 +929,86 @@ def test_search(client: Webclaw):
         return_value=httpx.Response(200, json={
             "query": "rust web scraping",
             "results": [{"title": "T", "url": "https://x.com", "description": "D"}],
+            "scrape": False,
+            "applied_filters": {
+                "include_domains": ["reddit.com"],
+                "exclude_domains": ["example.com"],
+                "include_url_prefixes": ["https://www.reddit.com/r/rust/comments/"],
+                "freshness": "month",
+                "location": "Austin, Texas, United States",
+                "autocorrect": False,
+            },
+            "filtered_out_count": 4,
+            "page": 2,
         })
     )
-    out = client.search("rust web scraping", num_results=5, topic="news")
+    out = client.search(
+        "rust web scraping",
+        num_results=5,
+        scrape=False,
+        formats=["markdown"],
+        country="us",
+        lang="en",
+        include_domains=["reddit.com"],
+        exclude_domains=["example.com"],
+        include_url_prefixes=["https://www.reddit.com/r/rust/comments/"],
+        freshness="month",
+        page=2,
+        location="Austin, Texas, United States",
+        autocorrect=False,
+        no_cache=True,
+        max_cache_age=300,
+    )
     assert out["query"] == "rust web scraping"
     assert out["results"][0]["url"] == "https://x.com"
+    assert out["applied_filters"]["freshness"] == "month"
+    assert out["filtered_out_count"] == 4
     import json
     payload = json.loads(route.calls.last.request.read())
-    assert payload["num_results"] == 5
+    assert payload == {
+        "query": "rust web scraping",
+        "num_results": 5,
+        "scrape": False,
+        "formats": ["markdown"],
+        "country": "us",
+        "lang": "en",
+        "include_domains": ["reddit.com"],
+        "exclude_domains": ["example.com"],
+        "include_url_prefixes": ["https://www.reddit.com/r/rust/comments/"],
+        "freshness": "month",
+        "page": 2,
+        "location": "Austin, Texas, United States",
+        "autocorrect": False,
+        "no_cache": True,
+        "max_cache_age": 300,
+    }
+
+
+@respx.mock
+def test_search_published_bounds(client: Webclaw):
+    route = respx.post(f"{BASE}/v1/search").mock(
+        return_value=httpx.Response(200, json={"results": []})
+    )
+    client.search(
+        "q",
+        published_after="2026-07-01",
+        published_before="2026-07-31",
+    )
+    import json
+    payload = json.loads(route.calls.last.request.read())
+    assert payload["published_after"] == "2026-07-01"
+    assert payload["published_before"] == "2026-07-31"
+
+
+@respx.mock
+def test_search_deprecated_topic_is_warned_and_forwarded(client: Webclaw):
+    route = respx.post(f"{BASE}/v1/search").mock(
+        return_value=httpx.Response(200, json={"results": []})
+    )
+    with pytest.warns(DeprecationWarning, match="topic.*deprecated"):
+        client.search("q", topic="news")
+    import json
+    payload = json.loads(route.calls.last.request.read())
     assert payload["topic"] == "news"
 
 
@@ -1270,8 +1342,16 @@ def test_removed_dead_dataclasses_not_exported():
     import webclaw
 
     for name in (
-        "SearchResponse", "SearchResult", "DiffResponse",
+        "SearchResult", "DiffResponse",
         "ResearchStartResponse", "ResearchFinding", "ResearchSource",
     ):
         assert name not in webclaw.__all__
         assert not hasattr(webclaw, name)
+
+
+def test_search_contract_types_are_exported():
+    import webclaw
+
+    for name in ("SearchAppliedFilters", "SearchFreshness", "SearchResponse"):
+        assert name in webclaw.__all__
+        assert hasattr(webclaw, name)

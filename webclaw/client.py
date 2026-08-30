@@ -14,7 +14,8 @@ from .errors import AuthenticationError, NotFoundError, RateLimitError, TimeoutE
 from .types import (
     BatchResponse, BrandResponse, CrawlStatus, EndpointsResponse,
     ExtractResponse, LeadBatchJob, LeadBatchStatus, LeadResponse, MapResponse,
-    ResearchStatusResponse, ScrapeResponse, SummarizeResponse,
+    ResearchStatusResponse, ScrapeResponse, SearchFreshness, SearchResponse,
+    SummarizeResponse,
     WatchCheckResponse, WatchEntry, WatchListResponse, XAudienceResponse,
     XMonitor, XMonitorListResponse,
 )
@@ -187,9 +188,65 @@ class Webclaw:
         """Extract brand identity from a URL."""
         return ep.parse_brand(self._request("POST", "/v1/brand", json={"url": url}))
 
-    def search(self, query: str, *, num_results: int | None = None, topic: str | None = None) -> dict:
-        """Run a web search query via the Serper-backed search endpoint."""
-        return self._request("POST", "/v1/search", json=ep.build_search_body(query, num_results=num_results, topic=topic))
+    def search(
+        self,
+        query: str,
+        *,
+        num_results: int | None = None,
+        topic: str | None = None,
+        scrape: bool | None = None,
+        formats: Sequence[str] | None = None,
+        country: str | None = None,
+        lang: str | None = None,
+        include_domains: Sequence[str] | None = None,
+        exclude_domains: Sequence[str] | None = None,
+        include_url_prefixes: Sequence[str] | None = None,
+        freshness: SearchFreshness | None = None,
+        published_after: str | None = None,
+        published_before: str | None = None,
+        page: int | None = None,
+        location: str | None = None,
+        autocorrect: bool | None = None,
+        no_cache: bool = False,
+        max_cache_age: int | None = None,
+    ) -> SearchResponse:
+        """Run a web search with strict source filters and provider hints.
+
+        ``freshness``, ``published_after``, and the exclusive
+        ``published_before`` bound guide provider discovery; they do not
+        verify result publication dates.
+
+        ``topic`` is deprecated and ignored by the hosted API. It remains in
+        the wire payload for compatibility with older self-hosted servers.
+        """
+        if topic is not None:
+            warnings.warn(
+                "The 'topic' search parameter is deprecated and ignored by the hosted API; "
+                "use query and the search filters instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        body = ep.build_search_body(
+            query,
+            num_results=num_results,
+            topic=topic,
+            scrape=scrape,
+            formats=formats,
+            country=country,
+            lang=lang,
+            include_domains=include_domains,
+            exclude_domains=exclude_domains,
+            include_url_prefixes=include_url_prefixes,
+            freshness=freshness,
+            published_after=published_after,
+            published_before=published_before,
+            page=page,
+            location=location,
+            autocorrect=autocorrect,
+            no_cache=no_cache,
+            max_cache_age=max_cache_age,
+        )
+        return self._request("POST", "/v1/search", json=body)
 
     def list_extractors(self) -> dict:
         """List all vertical extractors available on the server.
