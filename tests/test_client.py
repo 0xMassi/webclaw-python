@@ -8,12 +8,20 @@ from webclaw import (
     AuthenticationError,
     NotFoundError,
     RateLimitError,
+    ScopeError,
     TimeoutError,
     Webclaw,
     WebclawError,
 )
 
 BASE = "https://api.webclaw.io"
+
+
+def test_opaque_ids_are_encoded_as_single_path_segments():
+    from webclaw import _endpoints as ep
+
+    assert ep.path_segment("job/with space?") == "job%2Fwith%20space%3F"
+    assert ep.x_monitor_path("monitor/one") == "/v1/x/monitors/monitor%2Fone"
 
 
 @pytest.fixture()
@@ -699,12 +707,14 @@ def test_auth_error(client: Webclaw):
 
 
 @respx.mock
-def test_auth_error_403(client: Webclaw):
+def test_scope_error_403(client: Webclaw):
     respx.post(f"{BASE}/v1/scrape").mock(
         return_value=httpx.Response(403, json={"error": "Forbidden"})
     )
-    with pytest.raises(AuthenticationError):
+    with pytest.raises(ScopeError) as exc:
         client.scrape("https://example.com")
+    assert exc.value.status_code == 403
+    assert isinstance(exc.value, AuthenticationError)
 
 
 @respx.mock

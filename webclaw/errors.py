@@ -12,10 +12,22 @@ class WebclawError(Exception):
 
 
 class AuthenticationError(WebclawError):
-    """Raised on 401/403 responses -- invalid or missing API key."""
+    """Raised on 401 responses -- invalid or missing API key."""
 
     def __init__(self, message: str = "Invalid or missing API key") -> None:
         super().__init__(message, status_code=401)
+
+
+class ScopeError(AuthenticationError):
+    """Raised on 403 responses -- authenticated but not authorized.
+
+    This subclasses :class:`AuthenticationError` for compatibility with code
+    that previously caught 401 and 403 together, while preserving the real
+    HTTP status and allowing callers to distinguish plan/scope failures.
+    """
+
+    def __init__(self, message: str = "Insufficient permissions") -> None:
+        WebclawError.__init__(self, message, status_code=403)
 
 
 class RateLimitError(WebclawError):
