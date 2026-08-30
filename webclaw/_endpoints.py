@@ -8,6 +8,7 @@ httpx vs async httpx) differs between the two clients.
 from __future__ import annotations
 
 from typing import Any, Sequence
+from urllib.parse import quote
 
 from .errors import WebclawError
 from .types import (
@@ -49,12 +50,17 @@ X_MONITORS_PATH = "/v1/x/monitors"
 X_AUDIENCE_PATH = "/v1/x/audience"
 
 
+def path_segment(value: str) -> str:
+    """Percent-encode an opaque identifier as exactly one URL path segment."""
+    return quote(value, safe="")
+
+
 def x_monitor_path(monitor_id: str) -> str:
-    return f"{X_MONITORS_PATH}/{monitor_id}"
+    return f"{X_MONITORS_PATH}/{path_segment(monitor_id)}"
 
 
 def x_monitor_check_path(monitor_id: str) -> str:
-    return f"{X_MONITORS_PATH}/{monitor_id}/check"
+    return f"{X_MONITORS_PATH}/{path_segment(monitor_id)}/check"
 
 # Job lifecycle states shared by crawl and research polling.
 #

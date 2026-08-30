@@ -9,6 +9,7 @@ from webclaw import (
     AuthenticationError,
     NotFoundError,
     RateLimitError,
+    ScopeError,
     TimeoutError,
     WebclawError,
 )
@@ -466,6 +467,17 @@ async def test_auth_error(client: AsyncWebclaw):
     )
     with pytest.raises(AuthenticationError):
         await client.scrape("https://example.com")
+
+
+@respx.mock
+async def test_scope_error(client: AsyncWebclaw):
+    respx.post(f"{BASE}/v1/scrape").mock(
+        return_value=httpx.Response(403, json={"error": "Paid plan required"})
+    )
+    with pytest.raises(ScopeError) as exc:
+        await client.scrape("https://example.com")
+    assert exc.value.status_code == 403
+    assert isinstance(exc.value, AuthenticationError)
 
 
 @respx.mock

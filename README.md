@@ -376,7 +376,7 @@ print(check.checked_at)   # ISO timestamp
 
 ### X (Twitter) monitoring
 
-Monitor X for new tweets matching a profile, search, list, or reply thread, and fire a webhook on new matches — plus export an account's followers or following. These are **paid-only** features (a free/lapsed account gets `AuthenticationError` for 403). Monitors and audience export are billed per X request at your plan rate (Starter 5, Growth 3, Pro 2, Scale 1 credits). Max 50 monitors per user.
+Monitor X for new tweets matching a profile, search, list, or reply thread, and fire a webhook on new matches — plus export an account's followers or following. These are **paid-only** features (a free/lapsed account gets `ScopeError` for 403). `ScopeError` remains an `AuthenticationError` subclass for backward-compatible catches. Monitors and audience export are billed per X request at your plan rate (Starter 5, Growth 3, Pro 2, Scale 1 credits). Max 50 monitors per user.
 
 **Create a monitor:**
 
@@ -474,6 +474,7 @@ All errors inherit from `WebclawError`, which carries the HTTP status code when 
 from webclaw import (
     WebclawError,
     AuthenticationError,
+    ScopeError,
     NotFoundError,
     RateLimitError,
     TimeoutError,
@@ -481,6 +482,8 @@ from webclaw import (
 
 try:
     result = client.scrape("https://example.com")
+except ScopeError:
+    print("API key is missing the required plan or scope")
 except AuthenticationError:
     print("Invalid or missing API key")
 except RateLimitError:
@@ -495,7 +498,8 @@ except WebclawError as e:
 
 | Exception | HTTP Status | When |
 |-----------|-------------|------|
-| `AuthenticationError` | 401 / 403 | Invalid or missing API key |
+| `AuthenticationError` | 401 | Invalid or missing API key |
+| `ScopeError` | 403 | Authenticated but missing the required plan or scope |
 | `NotFoundError` | 404 | Resource does not exist |
 | `RateLimitError` | 429 | Too many requests |
 | `TimeoutError` | -- | Crawl/research polling exceeded timeout |
