@@ -474,6 +474,7 @@ All errors inherit from `WebclawError`, which carries the HTTP status code when 
 from webclaw import (
     WebclawError,
     AuthenticationError,
+    ScopeError,
     NotFoundError,
     RateLimitError,
     TimeoutError,
@@ -481,6 +482,8 @@ from webclaw import (
 
 try:
     result = client.scrape("https://example.com")
+except ScopeError:
+    print("API key is missing the required plan or scope")
 except AuthenticationError:
     print("Invalid or missing API key")
 except RateLimitError:
