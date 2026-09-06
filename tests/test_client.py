@@ -94,13 +94,14 @@ def test_scrape_with_warning(client: Webclaw):
     assert result.warning == "Content truncated"
 
 
+@pytest.mark.parametrize("field", ["extraction", "json"])
 @respx.mock
-def test_scrape_with_json_format(client: Webclaw):
+def test_scrape_with_json_format(client: Webclaw, field: str):
     respx.post(f"{BASE}/v1/scrape").mock(
         return_value=httpx.Response(200, json={
             "url": "https://example.com",
             "metadata": {},
-            "json": {"key": "value"},
+            field: {"key": "value"},
         })
     )
     result = client.scrape("https://example.com", formats=["json"])

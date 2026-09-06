@@ -391,7 +391,7 @@ def parse_scrape(data: dict[str, Any]) -> ScrapeResponse:
         markdown=data.get("markdown"),
         text=data.get("text"),
         llm=data.get("llm"),
-        json_data=data.get("json"),
+        json_data=data.get("extraction", data.get("json")),
         cache=cache,
         warning=data.get("warning"),
         youtube=youtube,
