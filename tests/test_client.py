@@ -1286,3 +1286,16 @@ def test_removed_dead_dataclasses_not_exported():
     ):
         assert name not in webclaw.__all__
         assert not hasattr(webclaw, name)
+
+
+@respx.mock
+def test_scrape_mixed_extraction(client):
+    import json
+    options = {"schema": {"type": "object", "properties": {"title": {"type": "string"}}}, "prompt": "Use the page heading"}
+    route = respx.post(f"{BASE}/v1/scrape").mock(return_value=httpx.Response(200, json={"url": "https://example.com", "markdown": "# Example", "extract": {"title": "Example"}}))
+    result = client.scrape("https://example.com", formats=["markdown", "extract"], extract=options)
+    payload = json.loads(route.calls.last.request.read())
+    assert payload["extract"] == options
+    assert payload["formats"] == ["markdown", "extract"]
+    assert result.markdown == "# Example"
+    assert result.extract == {"title": "Example"}

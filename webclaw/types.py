@@ -45,6 +45,7 @@ class ScrapeResponse:
     text: str | None = None
     llm: str | None = None
     json_data: Any | None = None
+    extract: Any | None = None
     cache: CacheInfo | None = None
     warning: str | None = None
     # YouTube-only — set when the URL is a YouTube watch/shorts/youtu.be.

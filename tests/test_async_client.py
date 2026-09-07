@@ -759,3 +759,16 @@ async def test_batch_full_shape(client: AsyncWebclaw):
     assert a.text == "A"
     assert a.llm == "A llm"
     assert a.json_data == {"k": 1}
+
+
+@respx.mock
+async def test_scrape_mixed_extraction(client):
+    import json
+    options = {"schema": {"type": "object", "properties": {"title": {"type": "string"}}}, "prompt": "Use the page heading"}
+    route = respx.post(f"{BASE}/v1/scrape").mock(return_value=httpx.Response(200, json={"url": "https://example.com", "markdown": "# Example", "extract": {"title": "Example"}}))
+    result = await client.scrape("https://example.com", formats=["markdown", "extract"], extract=options)
+    payload = json.loads(route.calls.last.request.read())
+    assert payload["extract"] == options
+    assert payload["formats"] == ["markdown", "extract"]
+    assert result.markdown == "# Example"
+    assert result.extract == {"title": "Example"}

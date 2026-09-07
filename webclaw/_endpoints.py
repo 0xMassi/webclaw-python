@@ -79,9 +79,6 @@ FAILURE_STATES = frozenset({"failed", "interrupted", "error", "cancelled", "canc
 IN_PROGRESS_STATES = frozenset(
     {"pending", "running", "processing", "queued", "in_progress", "started", ""}
 )
-# Terminal = anything that is not still in progress. Kept as a single
-# name for callers that just need the "is this done" predicate.
-TERMINAL_STATES = frozenset({SUCCESS_STATE}) | FAILURE_STATES
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +93,7 @@ def build_scrape_body(
     exclude_selectors: list[str] | None = None,
     only_main_content: bool = False,
     no_cache: bool = False,
+    extract: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {"url": url}
     if formats is not None:
@@ -108,6 +106,8 @@ def build_scrape_body(
         body["only_main_content"] = True
     if no_cache:
         body["no_cache"] = True
+    if extract is not None:
+        body["extract"] = extract
     return body
 
 
@@ -392,6 +392,7 @@ def parse_scrape(data: dict[str, Any]) -> ScrapeResponse:
         text=data.get("text"),
         llm=data.get("llm"),
         json_data=data.get("extraction", data.get("json")),
+        extract=data.get("extract"),
         cache=cache,
         warning=data.get("warning"),
         youtube=youtube,

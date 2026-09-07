@@ -72,12 +72,13 @@ class Webclaw:
         exclude_selectors: list[str] | None = None,
         only_main_content: bool = False,
         no_cache: bool = False,
+        extract: dict[str, Any] | None = None,
     ) -> ScrapeResponse:
         """Scrape a URL and extract content."""
         body = ep.build_scrape_body(
             url, formats=formats, include_selectors=include_selectors,
             exclude_selectors=exclude_selectors, only_main_content=only_main_content,
-            no_cache=no_cache,
+            no_cache=no_cache, extract=extract,
         )
         return ep.parse_scrape(self._request("POST", "/v1/scrape", json=body))
 
@@ -296,7 +297,6 @@ class Webclaw:
             label=f"Crawl {job_id}",
             interval=interval,
             timeout=timeout,
-            status_attr="status",
         )
 
     # -- watch endpoints ------------------------------------------------------
@@ -451,7 +451,6 @@ class CrawlJobHandle:
         return _poll_until_done(
             fetcher=self.get_status, parser=lambda s: s,
             label=f"Crawl {self.id}", interval=interval, timeout=timeout,
-            status_attr="status",
         )
 
 
@@ -533,8 +532,8 @@ def _is_transient_poll_error(exc: Exception) -> bool:
     return False
 
 
-def _classify_status(result: Any, status_attr: str) -> str:
-    return result.get("status", "") if isinstance(result, dict) else getattr(result, status_attr, "")
+def _classify_status(result: Any) -> str:
+    return result.get("status", "") if isinstance(result, dict) else getattr(result, "status", "")
 
 
 def _poll_outcome(result: Any, status: str, parser, label: str) -> Any:
@@ -558,7 +557,7 @@ _KEEP_POLLING = object()
 
 
 def _poll_until_done(
-    *, fetcher, parser, label: str, interval: float, timeout: float, status_attr: str = "status",
+    *, fetcher, parser, label: str, interval: float, timeout: float,
 ) -> Any:
     """Poll fetcher() until terminal state, then return parser(result).
 
@@ -592,7 +591,7 @@ def _poll_until_done(
             delay = min(delay * _POLL_BACKOFF_FACTOR, _POLL_MAX_INTERVAL)
             continue
         transient_failures = 0
-        status = _classify_status(result, status_attr)
+        status = _classify_status(result)
         outcome = _poll_outcome(result, status, parser, label)
         if outcome is not _KEEP_POLLING:
             return outcome
