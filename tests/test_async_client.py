@@ -9,6 +9,7 @@ from webclaw import (
     AuthenticationError,
     NotFoundError,
     RateLimitError,
+    ScopeError,
     TimeoutError,
     WebclawError,
 )
@@ -469,6 +470,17 @@ async def test_auth_error(client: AsyncWebclaw):
 
 
 @respx.mock
+async def test_scope_error(client: AsyncWebclaw):
+    respx.post(f"{BASE}/v1/scrape").mock(
+        return_value=httpx.Response(403, json={"error": "Paid plan required"})
+    )
+    with pytest.raises(ScopeError) as exc:
+        await client.scrape("https://example.com")
+    assert exc.value.status_code == 403
+    assert isinstance(exc.value, AuthenticationError)
+
+
+@respx.mock
 async def test_not_found_error(client: AsyncWebclaw):
     respx.get(f"{BASE}/v1/crawl/nope").mock(
         return_value=httpx.Response(404, json={"error": "Not found"})
@@ -782,3 +794,16 @@ async def test_batch_full_shape(client: AsyncWebclaw):
     assert a.text == "A"
     assert a.llm == "A llm"
     assert a.json_data == {"k": 1}
+
+
+@respx.mock
+async def test_scrape_mixed_extraction(client):
+    import json
+    options = {"schema": {"type": "object", "properties": {"title": {"type": "string"}}}, "prompt": "Use the page heading"}
+    route = respx.post(f"{BASE}/v1/scrape").mock(return_value=httpx.Response(200, json={"url": "https://example.com", "markdown": "# Example", "extract": {"title": "Example"}}))
+    result = await client.scrape("https://example.com", formats=["markdown", "extract"], extract=options)
+    payload = json.loads(route.calls.last.request.read())
+    assert payload["extract"] == options
+    assert payload["formats"] == ["markdown", "extract"]
+    assert result.markdown == "# Example"
+    assert result.extract == {"title": "Example"}

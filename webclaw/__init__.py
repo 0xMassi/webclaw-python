@@ -6,6 +6,7 @@ from .errors import (
     AuthenticationError,
     NotFoundError,
     RateLimitError,
+    ScopeError,
     TimeoutError,
     WebclawError,
 )
@@ -94,6 +95,7 @@ __all__ = [
     # errors
     "WebclawError",
     "AuthenticationError",
+    "ScopeError",
     "RateLimitError",
     "NotFoundError",
     "TimeoutError",

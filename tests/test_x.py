@@ -14,6 +14,7 @@ import respx
 from webclaw import (
     AsyncWebclaw,
     AuthenticationError,
+    ScopeError,
     Webclaw,
     XAudienceResponse,
     XMonitor,
@@ -294,12 +295,14 @@ def test_export_x_audience_null_cursor_means_done(client: Webclaw):
 
 
 @respx.mock
-def test_create_x_monitor_403_is_auth_error(client: Webclaw):
+def test_create_x_monitor_403_is_scope_error(client: Webclaw):
     respx.post(f"{BASE}/v1/x/monitors").mock(
         return_value=httpx.Response(403, json={"error": "X monitoring requires a paid plan"})
     )
-    with pytest.raises(AuthenticationError, match="paid plan"):
+    with pytest.raises(ScopeError, match="paid plan") as exc:
         client.create_x_monitor("profile", "@handle")
+    assert exc.value.status_code == 403
+    assert isinstance(exc.value, AuthenticationError)
 
 
 # -- async mirror -------------------------------------------------------------
@@ -360,5 +363,5 @@ async def test_async_create_x_monitor_403(aclient: AsyncWebclaw):
     respx.post(f"{BASE}/v1/x/monitors").mock(
         return_value=httpx.Response(403, json={"error": "paid only"})
     )
-    with pytest.raises(AuthenticationError):
+    with pytest.raises(ScopeError):
         await aclient.create_x_monitor("search", "rust")

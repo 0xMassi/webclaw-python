@@ -8,6 +8,7 @@ httpx vs async httpx) differs between the two clients.
 from __future__ import annotations
 
 from typing import Any, Sequence
+from urllib.parse import quote
 
 from .errors import WebclawError
 from .types import (
@@ -50,12 +51,17 @@ X_MONITORS_PATH = "/v1/x/monitors"
 X_AUDIENCE_PATH = "/v1/x/audience"
 
 
+def path_segment(value: str) -> str:
+    """Percent-encode an opaque identifier as exactly one URL path segment."""
+    return quote(value, safe="")
+
+
 def x_monitor_path(monitor_id: str) -> str:
-    return f"{X_MONITORS_PATH}/{monitor_id}"
+    return f"{X_MONITORS_PATH}/{path_segment(monitor_id)}"
 
 
 def x_monitor_check_path(monitor_id: str) -> str:
-    return f"{X_MONITORS_PATH}/{monitor_id}/check"
+    return f"{X_MONITORS_PATH}/{path_segment(monitor_id)}/check"
 
 # Job lifecycle states shared by crawl and research polling.
 #
@@ -74,9 +80,6 @@ FAILURE_STATES = frozenset({"failed", "interrupted", "error", "cancelled", "canc
 IN_PROGRESS_STATES = frozenset(
     {"pending", "running", "processing", "queued", "in_progress", "started", ""}
 )
-# Terminal = anything that is not still in progress. Kept as a single
-# name for callers that just need the "is this done" predicate.
-TERMINAL_STATES = frozenset({SUCCESS_STATE}) | FAILURE_STATES
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +94,7 @@ def build_scrape_body(
     exclude_selectors: list[str] | None = None,
     only_main_content: bool = False,
     no_cache: bool = False,
+    extract: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {"url": url}
     if formats is not None:
@@ -103,6 +107,8 @@ def build_scrape_body(
         body["only_main_content"] = True
     if no_cache:
         body["no_cache"] = True
+    if extract is not None:
+        body["extract"] = extract
     return body
 
 
@@ -431,7 +437,8 @@ def parse_scrape(data: dict[str, Any]) -> ScrapeResponse:
         markdown=data.get("markdown"),
         text=data.get("text"),
         llm=data.get("llm"),
-        json_data=data.get("json"),
+        json_data=data.get("extraction", data.get("json")),
+        extract=data.get("extract"),
         cache=cache,
         warning=data.get("warning"),
         youtube=youtube,

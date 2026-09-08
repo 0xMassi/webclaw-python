@@ -10,7 +10,7 @@ from urllib.parse import quote
 import httpx
 
 from . import _endpoints as ep
-from .errors import AuthenticationError, NotFoundError, RateLimitError, TimeoutError, WebclawError
+from .errors import AuthenticationError, NotFoundError, RateLimitError, ScopeError, TimeoutError, WebclawError
 from .types import (
     BatchResponse, BrandResponse, CrawlStatus, EndpointsResponse,
     ExtractResponse, LeadBatchJob, LeadBatchStatus, LeadResponse, MapResponse,
@@ -73,12 +73,13 @@ class Webclaw:
         exclude_selectors: list[str] | None = None,
         only_main_content: bool = False,
         no_cache: bool = False,
+        extract: dict[str, Any] | None = None,
     ) -> ScrapeResponse:
         """Scrape a URL and extract content."""
         body = ep.build_scrape_body(
             url, formats=formats, include_selectors=include_selectors,
             exclude_selectors=exclude_selectors, only_main_content=only_main_content,
-            no_cache=no_cache,
+            no_cache=no_cache, extract=extract,
         )
         return ep.parse_scrape(self._request("POST", "/v1/scrape", json=body))
 
@@ -92,7 +93,7 @@ class Webclaw:
 
     def get_crawl_status(self, job_id: str) -> CrawlStatus:
         """Get current status of a crawl job."""
-        return ep.parse_crawl_status(self._request("GET", f"/v1/crawl/{job_id}"))
+        return ep.parse_crawl_status(self._request("GET", f"/v1/crawl/{ep.path_segment(job_id)}"))
 
     def map(self, url: str) -> MapResponse:
         """Discover URLs from a site's sitemap."""
@@ -162,7 +163,7 @@ class Webclaw:
 
     def get_lead_batch(self, job_id: str) -> LeadBatchStatus:
         """Get status/results of a lead batch job without polling."""
-        return ep.parse_lead_batch_status(self._request("GET", f"/v1/lead/batch/{job_id}"))
+        return ep.parse_lead_batch_status(self._request("GET", f"/v1/lead/batch/{ep.path_segment(job_id)}"))
 
     def wait_for_lead_batch(
         self, job_id: str, *, interval: float = 2.0, timeout: float = 600.0,
@@ -173,7 +174,7 @@ class Webclaw:
         capped backoff and terminal/unknown-status fail-fast behaviour.
         """
         return _poll_until_done(
-            fetcher=lambda: self._request("GET", f"/v1/lead/batch/{job_id}"),
+            fetcher=lambda: self._request("GET", f"/v1/lead/batch/{ep.path_segment(job_id)}"),
             parser=ep.parse_lead_batch_status,
             label=f"Lead batch {job_id}",
             interval=interval,
@@ -306,7 +307,7 @@ class Webclaw:
         body = ep.build_research_body(query, deep=deep, max_sources=max_sources, max_iterations=max_iterations, topic=topic)
         job_id = self._request("POST", "/v1/research", json=body)["id"]
         return _poll_until_done(
-            fetcher=lambda: self._request("GET", f"/v1/research/{job_id}"),
+            fetcher=lambda: self._request("GET", f"/v1/research/{ep.path_segment(job_id)}"),
             parser=ep.parse_research,
             label=f"Research {job_id}",
             interval=2.0,
@@ -315,7 +316,7 @@ class Webclaw:
 
     def get_research_status(self, job_id: str) -> ResearchStatusResponse:
         """Get status/results of a research job without polling."""
-        return ep.parse_research(self._request("GET", f"/v1/research/{job_id}"))
+        return ep.parse_research(self._request("GET", f"/v1/research/{ep.path_segment(job_id)}"))
 
     def wait_for_research(
         self, job_id: str, *, interval: float = 2.0, timeout: float = 1200.0,
@@ -332,7 +333,7 @@ class Webclaw:
         shorter waits.
         """
         return _poll_until_done(
-            fetcher=lambda: self._request("GET", f"/v1/research/{job_id}"),
+            fetcher=lambda: self._request("GET", f"/v1/research/{ep.path_segment(job_id)}"),
             parser=ep.parse_research,
             label=f"Research {job_id}",
             interval=interval,
@@ -353,7 +354,6 @@ class Webclaw:
             label=f"Crawl {job_id}",
             interval=interval,
             timeout=timeout,
-            status_attr="status",
         )
 
     # -- watch endpoints ------------------------------------------------------
@@ -371,21 +371,21 @@ class Webclaw:
 
     def watch_get(self, watch_id: str) -> WatchEntry:
         """Get a single watch monitor by ID."""
-        return ep.parse_watch_entry(self._request("GET", f"/v1/watch/{watch_id}"))
+        return ep.parse_watch_entry(self._request("GET", f"/v1/watch/{ep.path_segment(watch_id)}"))
 
     def watch_delete(self, watch_id: str) -> None:
         """Delete a watch monitor."""
-        self._request("DELETE", f"/v1/watch/{watch_id}")
+        self._request("DELETE", f"/v1/watch/{ep.path_segment(watch_id)}")
 
     def watch_check(self, watch_id: str) -> WatchCheckResponse:
         """Trigger an immediate check for a watch monitor."""
-        return ep.parse_watch_check(self._request("POST", f"/v1/watch/{watch_id}/check"))
+        return ep.parse_watch_check(self._request("POST", f"/v1/watch/{ep.path_segment(watch_id)}/check"))
 
     # -- X (Twitter) monitoring -----------------------------------------------
     #
     # The X analog of the watch endpoints: a monitor polls X on a schedule and
     # fires a webhook on new matches. Paid-only -- the server returns 403 for
-    # free/lapsed accounts (surfaced as AuthenticationError). Monitors cost 1
+    # free/lapsed accounts (surfaced as ScopeError). Monitors cost 1
     # credit per check; audience export costs 1 credit per page fetched. Max 50
     # monitors per user.
 
@@ -508,7 +508,6 @@ class CrawlJobHandle:
         return _poll_until_done(
             fetcher=self.get_status, parser=lambda s: s,
             label=f"Crawl {self.id}", interval=interval, timeout=timeout,
-            status_attr="status",
         )
 
 
@@ -551,8 +550,10 @@ def _raise_for_status(response: httpx.Response) -> None:
     else:
         detail = response.text
 
-    if response.status_code in (401, 403):
+    if response.status_code == 401:
         raise AuthenticationError(str(detail))
+    if response.status_code == 403:
+        raise ScopeError(str(detail))
     if response.status_code == 404:
         raise NotFoundError(str(detail))
     if response.status_code == 429:
@@ -588,8 +589,8 @@ def _is_transient_poll_error(exc: Exception) -> bool:
     return False
 
 
-def _classify_status(result: Any, status_attr: str) -> str:
-    return result.get("status", "") if isinstance(result, dict) else getattr(result, status_attr, "")
+def _classify_status(result: Any) -> str:
+    return result.get("status", "") if isinstance(result, dict) else getattr(result, "status", "")
 
 
 def _poll_outcome(result: Any, status: str, parser, label: str) -> Any:
@@ -613,7 +614,7 @@ _KEEP_POLLING = object()
 
 
 def _poll_until_done(
-    *, fetcher, parser, label: str, interval: float, timeout: float, status_attr: str = "status",
+    *, fetcher, parser, label: str, interval: float, timeout: float,
 ) -> Any:
     """Poll fetcher() until terminal state, then return parser(result).
 
@@ -647,7 +648,7 @@ def _poll_until_done(
             delay = min(delay * _POLL_BACKOFF_FACTOR, _POLL_MAX_INTERVAL)
             continue
         transient_failures = 0
-        status = _classify_status(result, status_attr)
+        status = _classify_status(result)
         outcome = _poll_outcome(result, status, parser, label)
         if outcome is not _KEEP_POLLING:
             return outcome

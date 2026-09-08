@@ -8,12 +8,20 @@ from webclaw import (
     AuthenticationError,
     NotFoundError,
     RateLimitError,
+    ScopeError,
     TimeoutError,
     Webclaw,
     WebclawError,
 )
 
 BASE = "https://api.webclaw.io"
+
+
+def test_opaque_ids_are_encoded_as_single_path_segments():
+    from webclaw import _endpoints as ep
+
+    assert ep.path_segment("job/with space?") == "job%2Fwith%20space%3F"
+    assert ep.x_monitor_path("monitor/one") == "/v1/x/monitors/monitor%2Fone"
 
 
 @pytest.fixture()
@@ -86,13 +94,14 @@ def test_scrape_with_warning(client: Webclaw):
     assert result.warning == "Content truncated"
 
 
+@pytest.mark.parametrize("field", ["extraction", "json"])
 @respx.mock
-def test_scrape_with_json_format(client: Webclaw):
+def test_scrape_with_json_format(client: Webclaw, field: str):
     respx.post(f"{BASE}/v1/scrape").mock(
         return_value=httpx.Response(200, json={
             "url": "https://example.com",
             "metadata": {},
-            "json": {"key": "value"},
+            field: {"key": "value"},
         })
     )
     result = client.scrape("https://example.com", formats=["json"])
@@ -699,12 +708,14 @@ def test_auth_error(client: Webclaw):
 
 
 @respx.mock
-def test_auth_error_403(client: Webclaw):
+def test_scope_error_403(client: Webclaw):
     respx.post(f"{BASE}/v1/scrape").mock(
         return_value=httpx.Response(403, json={"error": "Forbidden"})
     )
-    with pytest.raises(AuthenticationError):
+    with pytest.raises(ScopeError) as exc:
         client.scrape("https://example.com")
+    assert exc.value.status_code == 403
+    assert isinstance(exc.value, AuthenticationError)
 
 
 @respx.mock
@@ -1355,3 +1366,16 @@ def test_search_contract_types_are_exported():
     for name in ("SearchAppliedFilters", "SearchFreshness", "SearchResponse"):
         assert name in webclaw.__all__
         assert hasattr(webclaw, name)
+
+
+@respx.mock
+def test_scrape_mixed_extraction(client):
+    import json
+    options = {"schema": {"type": "object", "properties": {"title": {"type": "string"}}}, "prompt": "Use the page heading"}
+    route = respx.post(f"{BASE}/v1/scrape").mock(return_value=httpx.Response(200, json={"url": "https://example.com", "markdown": "# Example", "extract": {"title": "Example"}}))
+    result = client.scrape("https://example.com", formats=["markdown", "extract"], extract=options)
+    payload = json.loads(route.calls.last.request.read())
+    assert payload["extract"] == options
+    assert payload["formats"] == ["markdown", "extract"]
+    assert result.markdown == "# Example"
+    assert result.extract == {"title": "Example"}

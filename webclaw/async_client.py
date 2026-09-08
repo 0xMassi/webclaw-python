@@ -85,12 +85,13 @@ class AsyncWebclaw:
         exclude_selectors: list[str] | None = None,
         only_main_content: bool = False,
         no_cache: bool = False,
+        extract: dict[str, Any] | None = None,
     ) -> ScrapeResponse:
         """Scrape a URL and extract content."""
         body = ep.build_scrape_body(
             url, formats=formats, include_selectors=include_selectors,
             exclude_selectors=exclude_selectors, only_main_content=only_main_content,
-            no_cache=no_cache,
+            no_cache=no_cache, extract=extract,
         )
         return ep.parse_scrape(await self._request("POST", "/v1/scrape", json=body))
 
@@ -104,7 +105,7 @@ class AsyncWebclaw:
 
     async def get_crawl_status(self, job_id: str) -> CrawlStatus:
         """Get current status of a crawl job."""
-        return ep.parse_crawl_status(await self._request("GET", f"/v1/crawl/{job_id}"))
+        return ep.parse_crawl_status(await self._request("GET", f"/v1/crawl/{ep.path_segment(job_id)}"))
 
     async def map(self, url: str) -> MapResponse:
         """Discover URLs from a site's sitemap."""
@@ -162,7 +163,7 @@ class AsyncWebclaw:
 
     async def get_lead_batch(self, job_id: str) -> LeadBatchStatus:
         """Get status/results of a lead batch job without polling."""
-        return ep.parse_lead_batch_status(await self._request("GET", f"/v1/lead/batch/{job_id}"))
+        return ep.parse_lead_batch_status(await self._request("GET", f"/v1/lead/batch/{ep.path_segment(job_id)}"))
 
     async def wait_for_lead_batch(
         self, job_id: str, *, interval: float = 2.0, timeout: float = 600.0,
@@ -173,7 +174,7 @@ class AsyncWebclaw:
         :meth:`wait_for_research` / :meth:`wait_for_crawl`.
         """
         return await _async_poll_until_done(
-            fetcher=lambda: self._request("GET", f"/v1/lead/batch/{job_id}"),
+            fetcher=lambda: self._request("GET", f"/v1/lead/batch/{ep.path_segment(job_id)}"),
             parser=ep.parse_lead_batch_status,
             label=f"Lead batch {job_id}",
             interval=interval,
@@ -291,7 +292,7 @@ class AsyncWebclaw:
         body = ep.build_research_body(query, deep=deep, max_sources=max_sources, max_iterations=max_iterations, topic=topic)
         job_id = (await self._request("POST", "/v1/research", json=body))["id"]
         return await _async_poll_until_done(
-            fetcher=lambda: self._request("GET", f"/v1/research/{job_id}"),
+            fetcher=lambda: self._request("GET", f"/v1/research/{ep.path_segment(job_id)}"),
             parser=ep.parse_research,
             label=f"Research {job_id}",
             interval=2.0,
@@ -300,7 +301,7 @@ class AsyncWebclaw:
 
     async def get_research_status(self, job_id: str) -> ResearchStatusResponse:
         """Get status/results of a research job without polling."""
-        return ep.parse_research(await self._request("GET", f"/v1/research/{job_id}"))
+        return ep.parse_research(await self._request("GET", f"/v1/research/{ep.path_segment(job_id)}"))
 
     async def wait_for_research(
         self, job_id: str, *, interval: float = 2.0, timeout: float = 1200.0,
@@ -313,7 +314,7 @@ class AsyncWebclaw:
         restarting the job.
         """
         return await _async_poll_until_done(
-            fetcher=lambda: self._request("GET", f"/v1/research/{job_id}"),
+            fetcher=lambda: self._request("GET", f"/v1/research/{ep.path_segment(job_id)}"),
             parser=ep.parse_research,
             label=f"Research {job_id}",
             interval=interval,
@@ -333,7 +334,6 @@ class AsyncWebclaw:
             label=f"Crawl {job_id}",
             interval=interval,
             timeout=timeout,
-            status_attr="status",
         )
 
     # -- watch endpoints ------------------------------------------------------
@@ -351,21 +351,21 @@ class AsyncWebclaw:
 
     async def watch_get(self, watch_id: str) -> WatchEntry:
         """Get a single watch monitor by ID."""
-        return ep.parse_watch_entry(await self._request("GET", f"/v1/watch/{watch_id}"))
+        return ep.parse_watch_entry(await self._request("GET", f"/v1/watch/{ep.path_segment(watch_id)}"))
 
     async def watch_delete(self, watch_id: str) -> None:
         """Delete a watch monitor."""
-        await self._request("DELETE", f"/v1/watch/{watch_id}")
+        await self._request("DELETE", f"/v1/watch/{ep.path_segment(watch_id)}")
 
     async def watch_check(self, watch_id: str) -> WatchCheckResponse:
         """Trigger an immediate check for a watch monitor."""
-        return ep.parse_watch_check(await self._request("POST", f"/v1/watch/{watch_id}/check"))
+        return ep.parse_watch_check(await self._request("POST", f"/v1/watch/{ep.path_segment(watch_id)}/check"))
 
     # -- X (Twitter) monitoring -----------------------------------------------
     #
     # Async mirror of the sync X endpoints. The X analog of watch: a monitor
     # polls X on a schedule and fires a webhook on new matches. Paid-only --
-    # the server returns 403 (AuthenticationError) for free/lapsed accounts.
+    # the server returns 403 (ScopeError) for free/lapsed accounts.
     # Monitors cost 1 credit per check; audience export 1 credit per page.
 
     async def create_x_monitor(
@@ -466,14 +466,13 @@ class AsyncCrawlJobHandle:
         return await _async_poll_until_done(
             fetcher=self.get_status, parser=lambda s: s,
             label=f"Crawl {self.id}", interval=interval, timeout=timeout,
-            status_attr="status",
         )
 
 
 # -- helpers ------------------------------------------------------------------
 
 async def _async_poll_until_done(
-    *, fetcher, parser, label: str, interval: float, timeout: float, status_attr: str = "status",
+    *, fetcher, parser, label: str, interval: float, timeout: float,
 ) -> Any:
     """Async version of poll-until-done. See client._poll_until_done.
 
@@ -502,7 +501,7 @@ async def _async_poll_until_done(
             delay = min(delay * _POLL_BACKOFF_FACTOR, _POLL_MAX_INTERVAL)
             continue
         transient_failures = 0
-        status = _classify_status(result, status_attr)
+        status = _classify_status(result)
         outcome = _poll_outcome(result, status, parser, label)
         if outcome is not _KEEP_POLLING:
             return outcome
