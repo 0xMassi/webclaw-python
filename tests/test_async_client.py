@@ -748,7 +748,7 @@ async def test_watch_crud(client: AsyncWebclaw):
         return_value=httpx.Response(200, json={"id": "aw1", "url": "https://x.com"})
     )
     respx.post(f"{BASE}/v1/watch/aw1/check").mock(
-        return_value=httpx.Response(200, json={"id": "aw1", "has_changed": True, "checked_at": "t"})
+        return_value=httpx.Response(200, json={"status": "checking"})
     )
     respx.delete(f"{BASE}/v1/watch/aw1").mock(
         return_value=httpx.Response(200, json={"deleted": True})
@@ -761,7 +761,7 @@ async def test_watch_crud(client: AsyncWebclaw):
     got = await client.watch_get("aw1")
     assert got.id == "aw1"
     checked = await client.watch_check("aw1")
-    assert checked.has_changed is True
+    assert checked.status == "checking"
     await client.watch_delete("aw1")
 
 
@@ -807,3 +807,16 @@ async def test_scrape_mixed_extraction(client):
     assert payload["formats"] == ["markdown", "extract"]
     assert result.markdown == "# Example"
     assert result.extract == {"title": "Example"}
+
+
+@respx.mock
+async def test_async_cursor_and_browser_options(client):
+    import json
+    route = respx.post(f"{BASE}/v1/map").mock(return_value=httpx.Response(200, json={"urls": [], "count": 0, "next_cursor": None}))
+    result = await client.map("https://example.com", search="docs", limit=2, cursor="page/2")
+    assert json.loads(route.calls.last.request.read())["cursor"] == "page/2"
+    assert result.next_cursor is None
+    route = respx.post(f"{BASE}/v1/scrape").mock(return_value=httpx.Response(200, json={"url": "https://example.com", "screenshot": "png", "actions_performed": 1}))
+    result = await client.scrape("https://example.com", screenshot=True, actions=[{"type": "wait", "milliseconds": 1}])
+    assert json.loads(route.calls.last.request.read())["screenshot"] is True
+    assert (result.screenshot, result.actions_performed) == ("png", 1)

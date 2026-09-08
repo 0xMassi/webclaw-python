@@ -28,7 +28,7 @@ from .types import (
     ExtractResponse, LeadBatchJob, LeadBatchStatus, LeadResponse, MapResponse,
     ResearchStatusResponse, ScrapeResponse, SearchFreshness, SearchResponse,
     SummarizeResponse,
-    WatchCheckResponse, WatchEntry, WatchListResponse, XAudienceResponse,
+    WatchCheckResponse, WatchDetail, WatchEntry, WatchListResponse, XAudienceResponse,
     XMonitor, XMonitorListResponse,
 )
 
@@ -86,20 +86,30 @@ class AsyncWebclaw:
         only_main_content: bool = False,
         no_cache: bool = False,
         extract: dict[str, Any] | None = None,
+        max_cache_age: int | None = None,
+        mobile: bool = False,
+        screenshot: bool = False,
+        actions: list[dict[str, Any]] | None = None,
+        query: str | None = None,
+        attribute_selectors: list[dict[str, str]] | None = None,
     ) -> ScrapeResponse:
         """Scrape a URL and extract content."""
         body = ep.build_scrape_body(
             url, formats=formats, include_selectors=include_selectors,
             exclude_selectors=exclude_selectors, only_main_content=only_main_content,
-            no_cache=no_cache, extract=extract,
+            no_cache=no_cache, extract=extract, max_cache_age=max_cache_age,
+            mobile=mobile, screenshot=screenshot, actions=actions,
+            query=query, attribute_selectors=attribute_selectors,
         )
         return ep.parse_scrape(await self._request("POST", "/v1/scrape", json=body))
 
     async def crawl(
         self, url: str, *, max_depth: int = 2, max_pages: int = 50, use_sitemap: bool = False,
+        include_patterns: list[str] | None = None, exclude_patterns: list[str] | None = None,
+        webhook_url: str | None = None, allow_subdomains: bool = False, allow_external_links: bool = False,
     ) -> AsyncCrawlJobHandle:
         """Start a crawl job and return a handle for polling."""
-        body = ep.build_crawl_body(url, max_depth=max_depth, max_pages=max_pages, use_sitemap=use_sitemap)
+        body = ep.build_crawl_body(url, max_depth=max_depth, max_pages=max_pages, use_sitemap=use_sitemap, include_patterns=include_patterns, exclude_patterns=exclude_patterns, webhook_url=webhook_url, allow_subdomains=allow_subdomains, allow_external_links=allow_external_links)
         job = ep.parse_crawl_job(await self._request("POST", "/v1/crawl", json=body))
         return AsyncCrawlJobHandle(client=self, job_id=job.id, status=job.status)
 
@@ -107,9 +117,9 @@ class AsyncWebclaw:
         """Get current status of a crawl job."""
         return ep.parse_crawl_status(await self._request("GET", f"/v1/crawl/{ep.path_segment(job_id)}"))
 
-    async def map(self, url: str) -> MapResponse:
+    async def map(self, url: str, *, search: str | None = None, limit: int | None = None, cursor: str | None = None) -> MapResponse:
         """Discover URLs from a site's sitemap."""
-        return ep.parse_map(await self._request("POST", "/v1/map", json={"url": url}))
+        return ep.parse_map(await self._request("POST", "/v1/map", json=ep.build_map_body(url, search=search, limit=limit, cursor=cursor)))
 
     async def endpoints(
         self,
@@ -349,9 +359,9 @@ class AsyncWebclaw:
         """List all watch monitors."""
         return ep.parse_watch_list(await self._request("GET", "/v1/watch", params={"limit": limit, "offset": offset}))
 
-    async def watch_get(self, watch_id: str) -> WatchEntry:
+    async def watch_get(self, watch_id: str) -> WatchDetail:
         """Get a single watch monitor by ID."""
-        return ep.parse_watch_entry(await self._request("GET", f"/v1/watch/{ep.path_segment(watch_id)}"))
+        return ep.parse_watch_detail(await self._request("GET", f"/v1/watch/{ep.path_segment(watch_id)}"))
 
     async def watch_delete(self, watch_id: str) -> None:
         """Delete a watch monitor."""

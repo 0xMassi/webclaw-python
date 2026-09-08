@@ -10,7 +10,9 @@ from typing import Any, Literal, TypedDict
 
 @dataclass
 class CacheInfo:
-    status: str  # "hit" | "miss" | "bypass"
+    status: str  # "hit" | "miss" | "bypass" | "skip"
+    cached_at: str | None = None
+    age_seconds: int | None = None
 
 
 @dataclass
@@ -18,9 +20,8 @@ class YouTubeData:
     """Structured YouTube metadata returned by `/v1/scrape` for any
     `youtube.com/watch`, `youtube.com/shorts`, or `youtu.be/` URL.
 
-    Populated via the server's yt-dlp short-circuit (preferred) or the
-    standard pipeline's vertical YouTube extractor (transcript will be
-    `None` on this fallback path)."""
+    Metadata may be returned without captions; inspect `warning` and
+    `transcript` on the scrape response before treating it as a transcript."""
     video_id: str | None = None
     title: str | None = None
     description: str | None = None
@@ -55,6 +56,17 @@ class ScrapeResponse:
     transcript: str | None = None
 
 
+    links: list[dict[str, Any]] | None = None
+    raw_html: str | None = None
+    attributes: list[dict[str, Any]] | None = None
+    query_answer: str | None = None
+    screenshot: str | None = None
+    actions_performed: int | None = None
+    mobile: bool | None = None
+    structured_data: Any | None = None
+    engine: dict[str, Any] | None = None
+
+
 # -- Crawl -------------------------------------------------------------------
 
 @dataclass
@@ -87,6 +99,9 @@ class CrawlStatus:
 
 @dataclass
 class MapResponse:
+    next_cursor: str | None = None
+    total_indexed: int | None = None
+    cached: bool | None = None
     urls: list[str] = field(default_factory=list)
     count: int = 0
 
@@ -367,47 +382,63 @@ class ResearchStatusResponse:
     elapsed_ms: int = 0
 
 
+    sources_count: int | None = None
+    findings_count: int | None = None
+    total_pages_analyzed: int | None = None
+    created_at: str | None = None
+    error: str | None = None
+
+
 # -- Watch -------------------------------------------------------------------
 
 @dataclass
 class WatchEntry:
-    """A single watch monitor."""
+    """A saved monitor; create responses may omit check timestamps."""
     id: str = ""
     url: str = ""
     name: str | None = None
     interval_minutes: int = 1440
     webhook_url: str | None = None
-    status: str = ""
-    last_checked: str | None = None
-    created_at: str = ""
+    active: bool = False
+    last_checked_at: str | None = None
+    last_changed_at: str | None = None
+    created_at: str | None = None
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> WatchEntry:
-        return WatchEntry(
-            id=data.get("id", ""),
-            url=data.get("url", ""),
-            name=data.get("name"),
-            interval_minutes=data.get("interval_minutes", 1440),
-            webhook_url=data.get("webhook_url"),
-            status=data.get("status", ""),
-            last_checked=data.get("last_checked"),
-            created_at=data.get("created_at", ""),
-        )
+        return WatchEntry(**{key: value for key, value in data.items() if key in WatchEntry.__dataclass_fields__})
+
+
+@dataclass
+class WatchSnapshot:
+    id: str = ""
+    content_hash: str = ""
+    word_count: int = 0
+    status: str = ""
+    title: str | None = None
+    diff_summary: str | None = None
+    word_count_delta: int = 0
+    links_added: int = 0
+    links_removed: int = 0
+    checked_at: str = ""
+
+
+@dataclass
+class WatchDetail(WatchEntry):
+    snapshots: list[WatchSnapshot] = field(default_factory=list)
 
 
 @dataclass
 class WatchListResponse:
     watches: list[WatchEntry] = field(default_factory=list)
-    total: int = 0
+    # Older servers may supply a total. Page length is not a total.
+    total: int | None = None
 
 
 @dataclass
 class WatchCheckResponse:
-    """Result of a manual watch check."""
-    id: str = ""
-    has_changed: bool = False
-    diff: str | None = None
-    checked_at: str = ""
+    """Acknowledges an async check; read watch_get() for the saved snapshots."""
+    status: str
 
 
 # -- X (Twitter) monitoring --------------------------------------------------

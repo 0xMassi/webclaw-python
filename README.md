@@ -362,7 +362,7 @@ watch = client.watch_create(
     interval_minutes=60,
     webhook_url="https://hooks.example.com/webclaw",
 )
-print(watch.id, watch.status)
+print(watch.id, watch.active)
 ```
 
 **List all watches:**
@@ -370,8 +370,7 @@ print(watch.id, watch.status)
 ```python
 result = client.watch_list(limit=50, offset=0)
 for w in result.watches:
-    print(w.id, w.url, w.name, w.last_checked)
-print(result.total)
+    print(w.id, w.url, w.name, w.last_checked_at)
 ```
 
 **Get a single watch:**
@@ -391,9 +390,8 @@ client.watch_delete("watch-id-here")
 
 ```python
 check = client.watch_check("watch-id-here")
-print(check.has_changed)  # bool
-print(check.diff)         # str | None
-print(check.checked_at)   # ISO timestamp
+print(check.status)  # "checking"; the snapshot is produced asynchronously.
+# Fetch watch_get later to inspect its snapshots.
 ```
 
 ### X (Twitter) monitoring

@@ -1209,7 +1209,7 @@ def test_watch_create(client: Webclaw):
     route = respx.post(f"{BASE}/v1/watch").mock(
         return_value=httpx.Response(200, json={
             "id": "wch-1", "url": "https://example.com", "name": "my watch",
-            "interval_minutes": 60, "status": "active", "created_at": "2026-01-01",
+            "interval_minutes": 60, "active": True,
         })
     )
     w = client.watch_create(
@@ -1218,7 +1218,7 @@ def test_watch_create(client: Webclaw):
     )
     assert w.id == "wch-1"
     assert w.interval_minutes == 60
-    assert w.status == "active"
+    assert w.active is True
     import json
     payload = json.loads(route.calls.last.request.read())
     assert payload["webhook_url"] == "https://hook.example.com"
@@ -1232,11 +1232,10 @@ def test_watch_list(client: Webclaw):
                 {"id": "a", "url": "https://a.com"},
                 {"id": "b", "url": "https://b.com"},
             ],
-            "total": 2,
         })
     )
     out = client.watch_list(limit=10, offset=0)
-    assert out.total == 2
+    assert out.total is None
     assert out.watches[1].id == "b"
 
 
@@ -1262,13 +1261,11 @@ def test_watch_delete(client: Webclaw):
 def test_watch_check(client: Webclaw):
     respx.post(f"{BASE}/v1/watch/c1/check").mock(
         return_value=httpx.Response(200, json={
-            "id": "c1", "has_changed": True, "diff": "changed", "checked_at": "2026-01-02",
+            "status": "checking",
         })
     )
     res = client.watch_check("c1")
-    assert res.has_changed is True
-    assert res.diff == "changed"
-    assert res.checked_at == "2026-01-02"
+    assert res.status == "checking"
 
 
 @respx.mock
@@ -1379,3 +1376,34 @@ def test_scrape_mixed_extraction(client):
     assert payload["formats"] == ["markdown", "extract"]
     assert result.markdown == "# Example"
     assert result.extract == {"title": "Example"}
+
+
+@respx.mock
+def test_map_cursor_and_scrape_options_preserve_api_data(client):
+    import json
+    route = respx.post(f"{BASE}/v1/map").mock(return_value=httpx.Response(200, json={"urls": ["https://example.com/docs"], "count": 1, "next_cursor": "next/2", "total_indexed": 9, "cached": True}))
+    result = client.map("https://example.com", search="docs", limit=1, cursor="first")
+    assert json.loads(route.calls.last.request.read()) == {"url": "https://example.com", "search": "docs", "limit": 1, "cursor": "first"}
+    assert (result.next_cursor, result.total_indexed, result.cached) == ("next/2", 9, True)
+    attrs = [{"selector": "a", "attribute": "href", "values": ["/docs"]}]
+    route = respx.post(f"{BASE}/v1/scrape").mock(return_value=httpx.Response(200, json={"url": "https://example.com", "attributes": attrs, "rawHtml": "<a>Docs</a>", "engine": {"engine": "http"}, "mobile": True}))
+    result = client.scrape("https://example.com", formats=["attributes", "rawHtml"], mobile=True, max_cache_age=0, attribute_selectors=[{"selector": "a", "attribute": "href"}])
+    sent = json.loads(route.calls.last.request.read())
+    assert sent["mobile"] is True and sent["max_cache_age"] == 0
+    assert sent["attribute_selectors"] == [{"selector": "a", "attribute": "href"}]
+    assert result.attributes == attrs and result.engine == {"engine": "http"}
+    assert result.raw_html == "<a>Docs</a>"
+
+
+@respx.mock
+def test_watch_detail_and_research_provenance_are_not_discarded(client):
+    from webclaw import WatchDetail
+    respx.get(f"{BASE}/v1/watch/w1").mock(return_value=httpx.Response(200, json={"id": "w1", "url": "https://example.com", "active": True, "last_changed_at": None, "snapshots": [{"id": "s1", "links_added": 3, "links_removed": 1, "checked_at": "today"}]}))
+    watch = client.watch_get("w1")
+    assert isinstance(watch, WatchDetail) and watch.active
+    assert watch.last_changed_at is None and watch.snapshots[0].links_added == 3
+    evidence = [{"source_url": "https://example.com", "quote": "Example Domain"}]
+    from webclaw._endpoints import parse_research
+    report = parse_research({"id": "r1", "status": "completed", "sources_count": 1, "findings_count": 1, "total_pages_analyzed": 1, "created_at": "today", "findings": [{"fact": "Example", "evidence": evidence}]})
+    assert report.findings[0]["evidence"] == evidence
+    assert (report.sources_count, report.findings_count, report.total_pages_analyzed, report.created_at) == (1, 1, 1, "today")

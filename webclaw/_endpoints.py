@@ -34,6 +34,8 @@ from .types import (
     SummarizeResponse,
     WatchCheckResponse,
     WatchEntry,
+    WatchDetail,
+    WatchSnapshot,
     WatchListResponse,
     XAudienceResponse,
     XAudienceUser,
@@ -95,6 +97,12 @@ def build_scrape_body(
     only_main_content: bool = False,
     no_cache: bool = False,
     extract: dict[str, Any] | None = None,
+    max_cache_age: int | None = None,
+    mobile: bool = False,
+    screenshot: bool = False,
+    actions: list[dict[str, Any]] | None = None,
+    query: str | None = None,
+    attribute_selectors: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {"url": url}
     if formats is not None:
@@ -109,6 +117,21 @@ def build_scrape_body(
         body["no_cache"] = True
     if extract is not None:
         body["extract"] = extract
+    for key, value in [("max_cache_age", max_cache_age), ("actions", actions), ("query", query), ("attribute_selectors", attribute_selectors)]:
+        if value is not None:
+            body[key] = value
+    if mobile:
+        body["mobile"] = True
+    if screenshot:
+        body["screenshot"] = True
+    return body
+
+
+def build_map_body(url: str, *, search: str | None = None, limit: int | None = None, cursor: str | None = None) -> dict[str, Any]:
+    body: dict[str, Any] = {"url": url}
+    for key, value in [("search", search), ("limit", limit), ("cursor", cursor)]:
+        if value is not None:
+            body[key] = value
     return body
 
 
@@ -118,13 +141,23 @@ def build_crawl_body(
     max_depth: int = 2,
     max_pages: int = 50,
     use_sitemap: bool = False,
+    include_patterns: list[str] | None = None, exclude_patterns: list[str] | None = None,
+    webhook_url: str | None = None, allow_subdomains: bool = False, allow_external_links: bool = False,
 ) -> dict[str, Any]:
-    return {
+    body = {
         "url": url,
         "max_depth": max_depth,
         "max_pages": max_pages,
         "use_sitemap": use_sitemap,
     }
+    for key, value in [("include_patterns", include_patterns), ("exclude_patterns", exclude_patterns), ("webhook_url", webhook_url)]:
+        if value is not None:
+            body[key] = value
+    if allow_subdomains:
+        body["allow_subdomains"] = True
+    if allow_external_links:
+        body["allow_external_links"] = True
+    return body
 
 
 def build_batch_body(
@@ -429,7 +462,7 @@ def parse_scrape(data: dict[str, Any]) -> ScrapeResponse:
     cache = None
     raw_cache = data.get("cache")
     if isinstance(raw_cache, dict):
-        cache = CacheInfo(status=raw_cache.get("status", ""))
+        cache = CacheInfo(status=raw_cache.get("status", ""), cached_at=raw_cache.get("cached_at"), age_seconds=raw_cache.get("age_seconds"))
     youtube = _parse_youtube(data.get("youtube"))
     return ScrapeResponse(
         url=_require(data, "url", context="scrape"),
@@ -443,6 +476,16 @@ def parse_scrape(data: dict[str, Any]) -> ScrapeResponse:
         warning=data.get("warning"),
         youtube=youtube,
         transcript=data.get("transcript"),
+        links=data.get("links"),
+        raw_html=data.get("rawHtml"),
+        attributes=data.get("attributes"),
+        query_answer=data.get("query_answer"),
+        screenshot=data.get("screenshot"),
+        actions_performed=data.get("actions_performed"),
+        mobile=data.get("mobile"),
+        structured_data=data.get("structured_data"),
+        engine=data.get("engine"),
+
     )
 
 
@@ -474,7 +517,7 @@ def parse_crawl_status(data: dict[str, Any]) -> CrawlStatus:
 
 
 def parse_map(data: dict[str, Any]) -> MapResponse:
-    return MapResponse(urls=data.get("urls", []), count=data.get("count", 0))
+    return MapResponse(urls=data.get("urls", []), count=data.get("count", 0), next_cursor=data.get("next_cursor"), total_indexed=data.get("total_indexed"), cached=data.get("cached"))
 
 
 def parse_batch(data: dict[str, Any]) -> BatchResponse:
@@ -558,6 +601,12 @@ def parse_research(data: dict[str, Any]) -> ResearchStatusResponse:
         findings=data.get("findings", []),
         iterations=data.get("iterations", 0),
         elapsed_ms=data.get("elapsed_ms", 0),
+        sources_count=data.get("sources_count"),
+        findings_count=data.get("findings_count"),
+        total_pages_analyzed=data.get("total_pages_analyzed"),
+        created_at=data.get("created_at"),
+        error=data.get("error"),
+
     )
 
 
@@ -567,7 +616,7 @@ def parse_watch_entry(data: dict[str, Any]) -> WatchEntry:
 
 def parse_watch_list(data: dict[str, Any]) -> WatchListResponse:
     watches = [WatchEntry.from_dict(w) for w in data.get("watches", [])]
-    return WatchListResponse(watches=watches, total=data.get("total", len(watches)))
+    return WatchListResponse(watches=watches, total=data.get("total"))
 
 
 def parse_endpoints(data: dict[str, Any]) -> EndpointsResponse:
@@ -586,13 +635,14 @@ def parse_endpoints(data: dict[str, Any]) -> EndpointsResponse:
     )
 
 
+def parse_watch_detail(data: dict[str, Any]) -> WatchDetail:
+    entry = WatchEntry.from_dict(data)
+    snapshots = [WatchSnapshot(**{key: value for key, value in item.items() if key in WatchSnapshot.__dataclass_fields__}) for item in data.get("snapshots", [])]
+    return WatchDetail(**vars(entry), snapshots=snapshots)
+
+
 def parse_watch_check(data: dict[str, Any]) -> WatchCheckResponse:
-    return WatchCheckResponse(
-        id=data.get("id", ""),
-        has_changed=data.get("has_changed", False),
-        diff=data.get("diff"),
-        checked_at=data.get("checked_at", ""),
-    )
+    return WatchCheckResponse(status=_require(data, "status", context="watch check"))
 
 
 def parse_x_monitor(data: dict[str, Any]) -> XMonitor:
