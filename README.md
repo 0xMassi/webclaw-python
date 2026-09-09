@@ -82,7 +82,7 @@ result.warning    # str | None
 
 ### Vertical extractors
 
-28 site-specific extractors that return typed JSON (GitHub, Reddit, Amazon, YouTube, PyPI, HuggingFace, Trustpilot, etc.) instead of generic markdown. See the [catalog](https://webclaw.io/docs/api/vertical) for the full list.
+Site-specific extractors return structured JSON (GitHub, Reddit, Amazon, YouTube, PyPI, HuggingFace, Trustpilot, etc.) instead of generic markdown. See the [catalog](https://webclaw.io/docs/api/vertical) for the full list.
 
 ```python
 # Discover available extractors
@@ -268,14 +268,18 @@ print(result.summary)
 
 ### Diff
 
-Detect content changes at a URL since the last check.
+Compare a page with your most recent cached extraction. Use the same API account for both calls; a missing or expired baseline returns an error.
 
 ```python
-result = client.diff("https://example.com/status")
-
-print(result["has_changed"])  # bool
-print(result["diff"])         # str, unified diff of changes
+# Establish the cached baseline once, then check for changes later.
+client.scrape("https://example.com", formats=["json"])
+result = client.diff("https://example.com")
+print(result["status"])    # "Same", "Changed", or "New"
+print(result["text_diff"]) # unified diff, or None
+print(result["metadata_changes"])
 ```
+
+To compare against a saved baseline instead, pass its complete `extraction` as `previous`, including `metadata` and `content`. An arbitrary title/body object is not accepted.
 
 ### Brand
 

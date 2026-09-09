@@ -277,7 +277,7 @@ class AsyncWebclaw:
         return await self._request("POST", f"/v1/scrape/{quote(name, safe='')}", json={"url": url})
 
     async def diff(self, url: str, **kwargs: Any) -> dict:
-        """Detect content changes at a URL since the last check."""
+        """Compare with this caller's cached extraction, or a complete ``previous`` extraction."""
         return await self._request("POST", "/v1/diff", json={"url": url, **kwargs})
 
     async def research(

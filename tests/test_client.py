@@ -686,13 +686,13 @@ def test_brand(client: Webclaw):
     respx.post(f"{BASE}/v1/brand").mock(
         return_value=httpx.Response(200, json={
             "name": "Example Corp",
-            "colors": ["#fff", "#000"],
-            "logo": "https://example.com/logo.png",
+            "colors": [{"hex": "#ffffff", "usage": "Background", "count": 2}],
+            "logo_url": "https://example.com/logo.png",
         })
     )
     result = client.brand("https://example.com")
     assert result.data["name"] == "Example Corp"
-    assert result.data["colors"] == ["#fff", "#000"]
+    assert result.data["colors"] == [{"hex": "#ffffff", "usage": "Background", "count": 2}]
 
 
 # -- error handling -----------------------------------------------------------
@@ -1035,19 +1035,26 @@ def test_search_minimal_body(client: Webclaw):
 
 
 @respx.mock
-def test_diff(client: Webclaw):
-    route = respx.post(f"{BASE}/v1/diff").mock(
-        return_value=httpx.Response(200, json={
-            "url": "https://example.com", "has_changed": True, "diff": "- old\n+ new",
-        })
-    )
-    out = client.diff("https://example.com", granularity="line")
-    assert out["has_changed"] is True
+@pytest.mark.parametrize("explicit_previous", [False, True])
+def test_diff(client: Webclaw, explicit_previous: bool):
     import json
+    from pathlib import Path
+    fixtures = Path(__file__).parent / "fixtures"
+    response = json.loads((fixtures / "diff-changed.json").read_text())
+    previous = json.loads((fixtures / "diff-previous.json").read_text())
+    route = respx.post(f"{BASE}/v1/diff").mock(
+        return_value=httpx.Response(200, json=response)
+    )
+    options = {"previous": previous} if explicit_previous else {}
+    out = client.diff("https://example.com", **options)
+    assert out["status"] == "Changed"
+    assert "-# Previous fixture" in out["text_diff"]
+    assert out["metadata_changes"] == [{"field": "title", "old": "Previous fixture", "new": "Example Domain"}]
+    assert out["links_added"][0]["href"] == "https://iana.org/domains/example"
+    assert out["links_removed"] == []
+    assert out["word_count_delta"] == 13
     payload = json.loads(route.calls.last.request.read())
-    assert payload["url"] == "https://example.com"
-    assert payload["granularity"] == "line"
-
+    assert payload == {"url": "https://example.com", **options}
 
 @respx.mock
 def test_research_completes(client: Webclaw):

@@ -450,11 +450,13 @@ async def test_brand(client: AsyncWebclaw):
     respx.post(f"{BASE}/v1/brand").mock(
         return_value=httpx.Response(200, json={
             "name": "Acme",
-            "logo": "https://acme.com/logo.svg",
+            "logo_url": "https://acme.com/logo.svg",
+            "colors": [{"hex": "#ffffff", "usage": "Background", "count": 2}],
         })
     )
     result = await client.brand("https://acme.com")
     assert result.data["name"] == "Acme"
+    assert result.data["colors"][0]["hex"] == "#ffffff"
 
 
 # -- error handling -----------------------------------------------------------
@@ -655,13 +657,26 @@ async def test_search_deprecated_topic_is_warned_and_forwarded(client: AsyncWebc
 
 
 @respx.mock
-async def test_diff(client: AsyncWebclaw):
-    respx.post(f"{BASE}/v1/diff").mock(
-        return_value=httpx.Response(200, json={"url": "https://x.com", "has_changed": False})
+@pytest.mark.parametrize("explicit_previous", [False, True])
+async def test_diff(client: AsyncWebclaw, explicit_previous: bool):
+    import json
+    from pathlib import Path
+    fixtures = Path(__file__).parent / "fixtures"
+    response = json.loads((fixtures / "diff-changed.json").read_text())
+    previous = json.loads((fixtures / "diff-previous.json").read_text())
+    route = respx.post(f"{BASE}/v1/diff").mock(
+        return_value=httpx.Response(200, json=response)
     )
-    out = await client.diff("https://x.com")
-    assert out["has_changed"] is False
-
+    options = {"previous": previous} if explicit_previous else {}
+    out = await client.diff("https://example.com", **options)
+    assert out["status"] == "Changed"
+    assert "-# Previous fixture" in out["text_diff"]
+    assert out["metadata_changes"] == [{"field": "title", "old": "Previous fixture", "new": "Example Domain"}]
+    assert out["links_added"][0]["href"] == "https://iana.org/domains/example"
+    assert out["links_removed"] == []
+    assert out["word_count_delta"] == 13
+    payload = json.loads(route.calls.last.request.read())
+    assert payload == {"url": "https://example.com", **options}
 
 @respx.mock
 async def test_research_completes(client: AsyncWebclaw):

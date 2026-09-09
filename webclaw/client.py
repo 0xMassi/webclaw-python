@@ -292,7 +292,7 @@ class Webclaw:
         return self._request("POST", f"/v1/scrape/{quote(name, safe='')}", json={"url": url})
 
     def diff(self, url: str, **kwargs: Any) -> dict:
-        """Detect content changes at a URL since the last check."""
+        """Compare with this caller's cached extraction, or a complete ``previous`` extraction."""
         return self._request("POST", "/v1/diff", json={"url": url, **kwargs})
 
     def research(
