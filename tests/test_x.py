@@ -158,13 +158,14 @@ def test_list_x_monitors_sends_pagination_params(client: Webclaw):
 @respx.mock
 def test_get_x_monitor(client: Webclaw):
     respx.get(f"{BASE}/v1/x/monitors/xm-1").mock(
-        return_value=httpx.Response(200, json=_full_monitor())
+        return_value=httpx.Response(200, json={**_full_monitor(), "checks": [{"id": "check-1", "result": {"baseline": True}}]})
     )
     m = client.get_x_monitor("xm-1")
     assert m.id == "xm-1"
     assert m.target == "elonmusk"
     assert m.include_quotes is True
     assert m.lang == "en"
+    assert m.checks[0]["result"]["baseline"] is True
 
 
 # -- update -------------------------------------------------------------------

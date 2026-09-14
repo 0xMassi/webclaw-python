@@ -306,6 +306,7 @@ class XMonitor:
     last_checked_at: str | None = None
     last_matched_at: str | None = None
     created_at: str = ""
+    checks: list[dict[str, Any]] = field(default_factory=list)
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> XMonitor:
@@ -326,6 +327,7 @@ class XMonitor:
             last_checked_at=data.get("last_checked_at"),
             last_matched_at=data.get("last_matched_at"),
             created_at=data.get("created_at", ""),
+            checks=data.get("checks") or [],
         )
 
 
