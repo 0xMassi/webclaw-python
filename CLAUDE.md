@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents working in this repository.
 
 `webclaw` on PyPI: the Python SDK for the hosted Webclaw REST API (`https://api.webclaw.io`). One runtime dependency (`httpx`), Python 3.9–3.13, hatchling build. The workspace `../CLAUDE.md` covers the API itself and the platform around it.
 
