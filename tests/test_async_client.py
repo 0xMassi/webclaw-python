@@ -5,6 +5,7 @@ import pytest
 import respx
 
 from webclaw import (
+    ActionResult,
     AsyncWebclaw,
     AuthenticationError,
     NotFoundError,
@@ -647,7 +648,8 @@ async def test_async_cursor_and_browser_options(client):
     result = await client.map("https://example.com", search="docs", limit=2, cursor="page/2")
     assert json.loads(route.calls.last.request.read())["cursor"] == "page/2"
     assert result.next_cursor is None
-    route = respx.post(f"{BASE}/v1/scrape").mock(return_value=httpx.Response(200, json={"url": "https://example.com", "screenshot": "png", "actions_performed": 1}))
+    route = respx.post(f"{BASE}/v1/scrape").mock(return_value=httpx.Response(200, json={"url": "https://example.com", "screenshot": "png", "actions_performed": [{"action": "click", "success": True}, {"action": "waitForSelector", "success": False, "error": "timeout"}]}))
     result = await client.scrape("https://example.com", screenshot=True, actions=[{"type": "wait", "milliseconds": 1}])
     assert json.loads(route.calls.last.request.read())["screenshot"] is True
-    assert (result.screenshot, result.actions_performed) == ("png", 1)
+    assert result.screenshot == "png"
+    assert result.actions_performed == [ActionResult("click", True), ActionResult("waitForSelector", False, "timeout")]
