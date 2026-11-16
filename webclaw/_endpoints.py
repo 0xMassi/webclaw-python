@@ -12,6 +12,7 @@ from urllib.parse import quote
 
 from .errors import WebclawError
 from .types import (
+    ActionResult,
     BatchResponse,
     BatchResult,
     BrandResponse,
@@ -450,7 +451,15 @@ def parse_scrape(data: dict[str, Any]) -> ScrapeResponse:
         attributes=data.get("attributes"),
         query_answer=data.get("query_answer"),
         screenshot=data.get("screenshot"),
-        actions_performed=data.get("actions_performed"),
+        actions_performed=(
+            [
+                ActionResult(action=a.get("action", ""), success=bool(a.get("success")), error=a.get("error"))
+                for a in data["actions_performed"]
+                if isinstance(a, dict)
+            ]
+            if isinstance(data.get("actions_performed"), list)
+            else None
+        ),
         mobile=data.get("mobile"),
         structured_data=data.get("structured_data"),
         engine=data.get("engine"),

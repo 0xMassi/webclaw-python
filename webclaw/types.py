@@ -39,6 +39,13 @@ class YouTubeData:
 
 
 @dataclass
+class ActionResult:
+    action: str
+    success: bool
+    error: str | None = None
+
+
+@dataclass
 class ScrapeResponse:
     url: str
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -61,7 +68,7 @@ class ScrapeResponse:
     attributes: list[dict[str, Any]] | None = None
     query_answer: str | None = None
     screenshot: str | None = None
-    actions_performed: int | None = None
+    actions_performed: list[ActionResult] | None = None
     mobile: bool | None = None
     structured_data: Any | None = None
     engine: dict[str, Any] | None = None
