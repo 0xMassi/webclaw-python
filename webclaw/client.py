@@ -502,29 +502,27 @@ def _decode_json_body(response: httpx.Response) -> Any:
 def _raise_for_status(response: httpx.Response) -> None:
     if response.status_code < 400:
         return
-    # Parse the body once. A well-formed error is a JSON object with an
-    # "error" key, but the server (or an upstream proxy) may return a JSON
-    # array, string, number, or non-JSON text on failure -- none of those
-    # have .get(), so fall back to the raw text instead of masking the
-    # real status with an AttributeError.
     try:
         parsed = response.json()
     except (ValueError, TypeError):
         parsed = None
     if isinstance(parsed, dict):
         detail = parsed.get("error", response.text)
+        body_id = parsed.get("request_id")
     else:
         detail = response.text
+        body_id = None
+    request_id = response.headers.get("x-request-id") or (body_id if isinstance(body_id, str) else None) or None
 
     if response.status_code == 401:
-        raise AuthenticationError(str(detail))
+        raise AuthenticationError(str(detail), request_id=request_id)
     if response.status_code == 403:
-        raise ScopeError(str(detail))
+        raise ScopeError(str(detail), request_id=request_id)
     if response.status_code == 404:
-        raise NotFoundError(str(detail))
+        raise NotFoundError(str(detail), request_id=request_id)
     if response.status_code == 429:
-        raise RateLimitError(str(detail))
-    raise WebclawError(str(detail), status_code=response.status_code)
+        raise RateLimitError(str(detail), request_id=request_id)
+    raise WebclawError(str(detail), status_code=response.status_code, request_id=request_id)
 
 
 # Backoff ceiling for poll loops: the per-request delay grows from
