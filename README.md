@@ -490,6 +490,13 @@ except WebclawError as e:
     print(f"API error (status {e.status_code}): {e}")
 ```
 
+API errors carry `e.request_id` when the server assigned one (from the `x-request-id` header, or `request_id` in the error body), and `str(e)` ends with `(request id: ...)`. Log it and quote it when contacting support. Early rejections (400 validation, 401, 429) may have none, in which case it is `None`.
+
+```python
+except WebclawError as e:
+    logger.error("webclaw failed status=%s request_id=%s: %s", e.status_code, e.request_id, e)
+```
+
 | Exception | HTTP Status | When |
 |-----------|-------------|------|
 | `AuthenticationError` | 401 | Invalid or missing API key |

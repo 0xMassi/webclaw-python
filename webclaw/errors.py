@@ -4,18 +4,23 @@ from __future__ import annotations
 
 
 class WebclawError(Exception):
-    """Base exception for all Webclaw API errors."""
+    """Base exception for all Webclaw API errors.
 
-    def __init__(self, message: str, status_code: int | None = None) -> None:
+    ``request_id`` is the server request id from the ``x-request-id`` header or
+    the error body's ``request_id``, or ``None`` when the API returned neither.
+    """
+
+    def __init__(self, message: str, status_code: int | None = None, request_id: str | None = None) -> None:
         self.status_code = status_code
-        super().__init__(message)
+        self.request_id = request_id
+        super().__init__(f"{message} (request id: {request_id})" if request_id else message)
 
 
 class AuthenticationError(WebclawError):
     """Raised on 401 responses -- invalid or missing API key."""
 
-    def __init__(self, message: str = "Invalid or missing API key") -> None:
-        super().__init__(message, status_code=401)
+    def __init__(self, message: str = "Invalid or missing API key", request_id: str | None = None) -> None:
+        super().__init__(message, status_code=401, request_id=request_id)
 
 
 class ScopeError(AuthenticationError):
@@ -26,22 +31,22 @@ class ScopeError(AuthenticationError):
     HTTP status and allowing callers to distinguish plan/scope failures.
     """
 
-    def __init__(self, message: str = "Insufficient permissions") -> None:
-        WebclawError.__init__(self, message, status_code=403)
+    def __init__(self, message: str = "Insufficient permissions", request_id: str | None = None) -> None:
+        WebclawError.__init__(self, message, status_code=403, request_id=request_id)
 
 
 class RateLimitError(WebclawError):
     """Raised on 429 responses -- too many requests."""
 
-    def __init__(self, message: str = "Rate limit exceeded") -> None:
-        super().__init__(message, status_code=429)
+    def __init__(self, message: str = "Rate limit exceeded", request_id: str | None = None) -> None:
+        super().__init__(message, status_code=429, request_id=request_id)
 
 
 class NotFoundError(WebclawError):
     """Raised on 404 responses."""
 
-    def __init__(self, message: str = "Resource not found") -> None:
-        super().__init__(message, status_code=404)
+    def __init__(self, message: str = "Resource not found", request_id: str | None = None) -> None:
+        super().__init__(message, status_code=404, request_id=request_id)
 
 
 class TimeoutError(WebclawError):

@@ -1129,3 +1129,55 @@ def test_watch_detail_and_research_provenance_are_not_discarded(client):
     report = parse_research({"id": "r1", "status": "completed", "sources_count": 1, "findings_count": 1, "total_pages_analyzed": 1, "created_at": "today", "findings": [{"fact": "Example", "evidence": evidence}]})
     assert report.findings[0]["evidence"] == evidence
     assert (report.sources_count, report.findings_count, report.total_pages_analyzed, report.created_at) == (1, 1, 1, "today")
+
+
+@respx.mock
+def test_error_request_id_from_header(client):
+    from webclaw import WebclawError
+
+    respx.post(f"{BASE}/v1/scrape").mock(
+        return_value=httpx.Response(
+            500, json={"error": "boom", "request_id": "body-id"}, headers={"x-request-id": "hdr-id"}
+        )
+    )
+    with pytest.raises(WebclawError) as exc_info:
+        client.scrape("https://example.com")
+    assert exc_info.value.request_id == "hdr-id"
+    assert exc_info.value.status_code == 500
+    assert str(exc_info.value) == "boom (request id: hdr-id)"
+
+
+@respx.mock
+def test_error_request_id_from_body(client):
+    from webclaw import NotFoundError
+
+    respx.post(f"{BASE}/v1/scrape").mock(
+        return_value=httpx.Response(404, json={"error": "gone", "request_id": "body-id"})
+    )
+    with pytest.raises(NotFoundError) as exc_info:
+        client.scrape("https://example.com")
+    assert exc_info.value.request_id == "body-id"
+    assert str(exc_info.value) == "gone (request id: body-id)"
+
+
+@respx.mock
+def test_rate_limit_error_carries_request_id(client):
+    from webclaw import RateLimitError
+
+    respx.post(f"{BASE}/v1/scrape").mock(
+        return_value=httpx.Response(429, json={"error": "slow"}, headers={"x-request-id": "rl-id"})
+    )
+    with pytest.raises(RateLimitError) as exc_info:
+        client.scrape("https://example.com")
+    assert exc_info.value.request_id == "rl-id"
+
+
+@respx.mock
+def test_error_request_id_absent(client):
+    from webclaw import WebclawError
+
+    respx.post(f"{BASE}/v1/scrape").mock(return_value=httpx.Response(400, json={"error": "bad url"}))
+    with pytest.raises(WebclawError) as exc_info:
+        client.scrape("x")
+    assert exc_info.value.request_id is None
+    assert str(exc_info.value) == "bad url"
